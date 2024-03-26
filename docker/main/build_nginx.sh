@@ -3,7 +3,7 @@
 set -euxo pipefail
 
 NGINX_VERSION="1.25.3"
-VOD_MODULE_VERSION="1.31"
+VOD_MODULE_VERSION="1.33"
 SECURE_TOKEN_MODULE_VERSION="1.5"
 
 cp /etc/apt/sources.list /etc/apt/sources.list.d/sources-src.list

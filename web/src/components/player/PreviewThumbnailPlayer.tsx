@@ -17,8 +17,9 @@ import { isFirefox, isMobile, isSafari } from "react-device-detect";
 import Chip from "@/components/indicators/Chip";
 import { useFormattedTimestamp } from "@/hooks/use-date-utils";
 import useImageLoaded from "@/hooks/use-image-loaded";
-import { Skeleton } from "../ui/skeleton";
 import { useSwipeable } from "react-swipeable";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import ImageLoadingIndicator from "../indicators/ImageLoadingIndicator";
 
 type PreviewPlayerProps = {
   review: ReviewSegment;
@@ -110,7 +111,9 @@ export default function PreviewThumbnailPlayer({
     } else {
       // the second preview is longer, return the second if it exists
       if (firstIndex < allPreviews.length - 1) {
-        return allPreviews[firstIndex + 1];
+        return allPreviews.find(
+          (preview, idx) => idx > firstIndex && preview.camera == review.camera,
+        );
       }
 
       return undefined;
@@ -121,7 +124,11 @@ export default function PreviewThumbnailPlayer({
 
   const [hoverTimeout, setHoverTimeout] = useState<NodeJS.Timeout | null>();
   const [playback, setPlayback] = useState(false);
-  const playingBack = useMemo(() => playback, [playback]);
+  const [tooltipHovering, setTooltipHovering] = useState(false);
+  const playingBack = useMemo(
+    () => playback && !tooltipHovering,
+    [playback, tooltipHovering],
+  );
   const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
@@ -129,7 +136,7 @@ export default function PreviewThumbnailPlayer({
       return;
     }
 
-    if (isHovered) {
+    if (isHovered && !tooltipHovering) {
       setHoverTimeout(
         setTimeout(() => {
           setPlayback(true);
@@ -149,7 +156,7 @@ export default function PreviewThumbnailPlayer({
     }
     // we know that these deps are correct
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHovered, scrollLock]);
+  }, [isHovered, scrollLock, tooltipHovering]);
 
   // date
 
@@ -182,11 +189,14 @@ export default function PreviewThumbnailPlayer({
           />
         </div>
       )}
-      <PreviewPlaceholder imgLoaded={imgLoaded} />
+      <ImageLoadingIndicator
+        className="absolute inset-0"
+        imgLoaded={imgLoaded}
+      />
       <div className={`${imgLoaded ? "visible" : "invisible"}`}>
         <img
           ref={imgRef}
-          className={`w-full h-full transition-opacity ${
+          className={`size-full transition-opacity ${
             playingBack ? "opacity-0" : "opacity-100"
           }`}
           src={`${apiHost}${review.thumb_path.replace("/media/frigate/", "")}`}
@@ -196,28 +206,50 @@ export default function PreviewThumbnailPlayer({
           }}
         />
 
+        <div className="absolute left-0 top-2 z-40">
+          <Tooltip>
+            <div
+              className="flex"
+              onMouseEnter={() => setTooltipHovering(true)}
+              onMouseLeave={() => setTooltipHovering(false)}
+            >
+              <TooltipTrigger asChild>
+                <div className="mx-3 pb-1 text-white text-sm">
+                  {(review.severity == "alert" ||
+                    review.severity == "detection") && (
+                    <>
+                      <Chip
+                        className={`flex items-start justify-between space-x-1 ${playingBack ? "hidden" : ""} bg-gradient-to-br ${review.has_been_reviewed ? "from-green-600 to-green-700 bg-green-600" : "from-gray-400 to-gray-500 bg-gray-500"} z-0`}
+                      >
+                        {review.data.objects.map((object) => {
+                          return getIconForLabel(object, "size-3 text-white");
+                        })}
+                        {review.data.audio.map((audio) => {
+                          return getIconForLabel(audio, "size-3 text-white");
+                        })}
+                        {review.data.sub_labels?.map((sub) => {
+                          return getIconForSubLabel(sub, "size-3 text-white");
+                        })}
+                      </Chip>
+                    </>
+                  )}
+                </div>
+              </TooltipTrigger>
+            </div>
+            <TooltipContent className="capitalize">
+              {[
+                ...(review.data.objects || []),
+                ...(review.data.audio || []),
+                ...(review.data.sub_labels || []),
+              ]
+                .filter((item) => item !== undefined)
+                .join(", ")}
+            </TooltipContent>
+          </Tooltip>
+        </div>
         {!playingBack && (
           <>
-            <div className="absolute top-0 inset-x-0 rounded-t-l z-10 w-full h-[30%] bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
-              <div className="flex h-full justify-between items-start mx-3 pb-1 text-white text-sm ">
-                {(review.severity == "alert" ||
-                  review.severity == "detection") && (
-                  <Chip
-                    className={`absolute top-2 left-2 flex gap-1 bg-gradient-to-br ${review.has_been_reviewed ? "from-green-600 to-green-700 bg-green-600" : "from-gray-400 to-gray-500 bg-gray-500"} z-0`}
-                  >
-                    {review.data.objects.map((object) => {
-                      return getIconForLabel(object, "size-3 text-white");
-                    })}
-                    {review.data.audio.map((audio) => {
-                      return getIconForLabel(audio, "size-3 text-white");
-                    })}
-                    {review.data.sub_labels?.map((sub) => {
-                      return getIconForSubLabel(sub, "size-3 text-white");
-                    })}
-                  </Chip>
-                )}
-              </div>
-            </div>
+            <div className="absolute top-0 inset-x-0 rounded-t-l z-10 w-full h-[30%] bg-gradient-to-b from-black/60 to-transparent pointer-events-none"></div>
             <div className="absolute bottom-0 inset-x-0 rounded-b-l z-10 w-full h-[20%] bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
               <div className="flex h-full justify-between items-end mx-3 pb-1 text-white text-sm">
                 <TimeAgo time={review.start_time * 1000} dense />
@@ -671,17 +703,5 @@ function InProgressPreview({
         onMouseMove={isMobile ? undefined : onProgressHover}
       />
     </div>
-  );
-}
-
-function PreviewPlaceholder({ imgLoaded }: { imgLoaded: boolean }) {
-  if (imgLoaded) {
-    return;
-  }
-
-  return isSafari ? (
-    <div className={`absolute inset-0 bg-gray-300 pointer-events-none`} />
-  ) : (
-    <Skeleton className={`absolute inset-0 pointer-events-none`} />
   );
 }

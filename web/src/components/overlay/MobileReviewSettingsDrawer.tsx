@@ -7,7 +7,7 @@ import { ExportContent } from "./ExportDialog";
 import { ExportMode } from "@/types/filter";
 import ReviewActivityCalendar from "./ReviewActivityCalendar";
 import { SelectSeparator } from "../ui/select";
-import { ReviewFilter } from "@/types/review";
+import { ReviewFilter, ReviewSummary } from "@/types/review";
 import { getEndOfDayTimestamp } from "@/utils/dateUtil";
 import { GeneralFilterContent } from "../filter/ReviewFilterGroup";
 import useSWR from "swr";
@@ -20,24 +20,36 @@ import { isMobile } from "react-device-detect";
 const ATTRIBUTES = ["amazon", "face", "fedex", "license_plate", "ups"];
 type DrawerMode = "none" | "select" | "export" | "calendar" | "filter";
 
+const DRAWER_FEATURES = ["export", "calendar", "filter"] as const;
+export type DrawerFeatures = (typeof DRAWER_FEATURES)[number];
+const DEFAULT_DRAWER_FEATURES: DrawerFeatures[] = [
+  "export",
+  "calendar",
+  "filter",
+];
+
 type MobileReviewSettingsDrawerProps = {
+  features?: DrawerFeatures[];
   camera: string;
   filter?: ReviewFilter;
   latestTime: number;
   currentTime: number;
   range?: TimeRange;
   mode: ExportMode;
+  reviewSummary?: ReviewSummary;
   onUpdateFilter: (filter: ReviewFilter) => void;
   setRange: (range: TimeRange | undefined) => void;
   setMode: (mode: ExportMode) => void;
 };
 export default function MobileReviewSettingsDrawer({
+  features = DEFAULT_DRAWER_FEATURES,
   camera,
   filter,
   latestTime,
   currentTime,
   range,
   mode,
+  reviewSummary,
   onUpdateFilter,
   setRange,
   setMode,
@@ -123,27 +135,33 @@ export default function MobileReviewSettingsDrawer({
   if (drawerMode == "select") {
     content = (
       <div className="w-full p-4 flex flex-col gap-2">
-        <Button
-          className="w-full flex justify-center items-center gap-2"
-          onClick={() => setDrawerMode("export")}
-        >
-          <FaArrowDown className="p-1 fill-secondary bg-muted-foreground rounded-md" />
-          Export
-        </Button>
-        <Button
-          className="w-full flex justify-center items-center gap-2"
-          onClick={() => setDrawerMode("calendar")}
-        >
-          <FaCalendarAlt className="fill-muted-foreground" />
-          Calendar
-        </Button>
-        <Button
-          className="w-full flex justify-center items-center gap-2"
-          onClick={() => setDrawerMode("filter")}
-        >
-          <FaFilter className="fill-muted-foreground" />
-          Filter
-        </Button>
+        {features.includes("export") && (
+          <Button
+            className="w-full flex justify-center items-center gap-2"
+            onClick={() => setDrawerMode("export")}
+          >
+            <FaArrowDown className="p-1 fill-secondary bg-muted-foreground rounded-md" />
+            Export
+          </Button>
+        )}
+        {features.includes("calendar") && (
+          <Button
+            className="w-full flex justify-center items-center gap-2"
+            onClick={() => setDrawerMode("calendar")}
+          >
+            <FaCalendarAlt className="fill-muted-foreground" />
+            Calendar
+          </Button>
+        )}
+        {features.includes("filter") && (
+          <Button
+            className="w-full flex justify-center items-center gap-2"
+            onClick={() => setDrawerMode("filter")}
+          >
+            <FaFilter className="fill-muted-foreground" />
+            Filter
+          </Button>
+        )}
       </div>
     );
   } else if (drawerMode == "export") {
@@ -185,6 +203,7 @@ export default function MobileReviewSettingsDrawer({
           </div>
         </div>
         <ReviewActivityCalendar
+          reviewSummary={reviewSummary}
           selectedDay={
             filter?.after == undefined
               ? undefined
@@ -230,17 +249,13 @@ export default function MobileReviewSettingsDrawer({
           </div>
         </div>
         <GeneralFilterContent
-          allLabels={allLabels.concat(allLabels)}
+          allLabels={allLabels}
           selectedLabels={filter?.labels}
           currentLabels={currentLabels}
-          showReviewed={0}
-          reviewed={0}
           setCurrentLabels={setCurrentLabels}
           updateLabelFilter={(newLabels) =>
             onUpdateFilter({ ...filter, labels: newLabels })
           }
-          setShowReviewed={() => {}}
-          setReviewed={() => {}}
           onClose={() => setDrawerMode("select")}
         />
       </div>
@@ -280,10 +295,3 @@ export default function MobileReviewSettingsDrawer({
     </>
   );
 }
-
-/**
- * <MobileTimelineDrawer
-              selected={timelineType ?? "timeline"}
-              onSelect={setTimelineType}
-            />
- */

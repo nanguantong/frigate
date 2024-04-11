@@ -383,7 +383,7 @@ class BirdsEyeFrameManager:
         if mode == BirdseyeModeEnum.objects and object_box_count > 0:
             return True
 
-    def update_frame(self):
+    def update_frame(self, now):
         """Update to a new frame for birdseye."""
 
         # determine how many cameras are tracking objects within the last inactivity_threshold seconds
@@ -400,7 +400,7 @@ class BirdsEyeFrameManager:
         max_cameras = self.config.birdseye.layout.max_cameras
         max_camera_refresh = False
         if max_cameras:
-            now = datetime.datetime.now().timestamp()
+            # now = datetime.datetime.now().timestamp()
 
             if len(active_cameras) == max_cameras and now - self.last_refresh_time < 10:
                 # don't refresh cameras too often
@@ -695,7 +695,7 @@ class BirdsEyeFrameManager:
             return False
 
         try:
-            updated_frame = self.update_frame()
+            updated_frame = self.update_frame(now)
         except Exception:
             updated_frame = False
             self.active_cameras = []

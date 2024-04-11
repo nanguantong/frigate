@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { isMobile } from "react-device-detect";
 import scrollIntoView from "scroll-into-view-if-needed";
 import { useTimelineUtils } from "./use-timeline-utils";
@@ -6,6 +6,7 @@ import { useTimelineUtils } from "./use-timeline-utils";
 type DraggableElementProps = {
   contentRef: React.RefObject<HTMLElement>;
   timelineRef: React.RefObject<HTMLDivElement>;
+  segmentsRef: React.RefObject<HTMLDivElement>;
   draggableElementRef: React.RefObject<HTMLDivElement>;
   segmentDuration: number;
   showDraggableElement: boolean;
@@ -23,11 +24,13 @@ type DraggableElementProps = {
   setIsDragging: React.Dispatch<React.SetStateAction<boolean>>;
   setDraggableElementPosition?: React.Dispatch<React.SetStateAction<number>>;
   dense: boolean;
+  timelineSegments: ReactNode[];
 };
 
 function useDraggableElement({
   contentRef,
   timelineRef,
+  segmentsRef,
   draggableElementRef,
   segmentDuration,
   showDraggableElement,
@@ -45,6 +48,7 @@ function useDraggableElement({
   setIsDragging,
   setDraggableElementPosition,
   dense,
+  timelineSegments,
 }: DraggableElementProps) {
   const [clientYPosition, setClientYPosition] = useState<number | null>(null);
   const [initialClickAdjustment, setInitialClickAdjustment] = useState(0);
@@ -213,10 +217,10 @@ function useDraggableElement({
   );
 
   useEffect(() => {
-    if (timelineRef.current) {
+    if (timelineRef.current && timelineSegments.length) {
       setSegments(Array.from(timelineRef.current.querySelectorAll(".segment")));
     }
-  }, [timelineRef, segmentDuration, timelineDuration, timelineCollapsed]);
+  }, [timelineRef, timelineCollapsed, timelineSegments]);
 
   useEffect(() => {
     let animationFrameId: number | null = null;
@@ -426,8 +430,20 @@ function useDraggableElement({
   ]);
 
   useEffect(() => {
-    if (timelineRef.current && draggableElementTime && timelineCollapsed) {
-      setFullTimelineHeight(timelineRef.current.scrollHeight);
+    if (
+      timelineRef.current &&
+      segmentsRef.current &&
+      draggableElementTime &&
+      timelineCollapsed &&
+      timelineSegments &&
+      segments
+    ) {
+      setFullTimelineHeight(
+        Math.min(
+          timelineRef.current.scrollHeight,
+          segmentsRef.current.scrollHeight,
+        ),
+      );
       const alignedSegmentTime = alignStartDateToTimeline(draggableElementTime);
 
       let segmentElement = timelineRef.current.querySelector(
@@ -452,21 +468,42 @@ function useDraggableElement({
             if (setDraggableElementTime) {
               setDraggableElementTime(searchTime);
             }
-            break;
+            return;
+          }
+        }
+      }
+      if (!segmentElement) {
+        // segment still not found, just start at the beginning of the timeline or at now()
+        if (segments?.length) {
+          const searchTime = parseInt(
+            segments[0].getAttribute("data-segment-id") || "0",
+            10,
+          );
+          if (setDraggableElementTime) {
+            setDraggableElementTime(searchTime);
+          }
+        } else {
+          if (setDraggableElementTime) {
+            setDraggableElementTime(timelineStartAligned);
           }
         }
       }
     }
     // we know that these deps are correct
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timelineCollapsed]);
+  }, [timelineCollapsed, segments]);
 
   useEffect(() => {
-    if (timelineRef.current && segments) {
+    if (timelineRef.current && segments && segmentsRef.current) {
       setScrollEdgeSize(timelineRef.current.clientHeight * 0.03);
-      setFullTimelineHeight(timelineRef.current.scrollHeight);
+      setFullTimelineHeight(
+        Math.min(
+          timelineRef.current.scrollHeight,
+          segmentsRef.current.scrollHeight,
+        ),
+      );
     }
-  }, [timelineRef, segments]);
+  }, [timelineRef, segmentsRef, segments]);
 
   return { handleMouseDown, handleMouseUp, handleMouseMove };
 }

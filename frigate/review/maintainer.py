@@ -5,6 +5,7 @@ import logging
 import os
 import random
 import string
+import sys
 import threading
 from enum import Enum
 from multiprocessing.synchronize import Event as MpEvent
@@ -17,7 +18,8 @@ from frigate.comms.config_updater import ConfigSubscriber
 from frigate.comms.detections_updater import DetectionSubscriber, DetectionTypeEnum
 from frigate.comms.inter_process import InterProcessRequestor
 from frigate.config import CameraConfig, FrigateConfig
-from frigate.const import CLIPS_DIR, UPSERT_REVIEW_SEGMENT
+from frigate.const import ALL_ATTRIBUTE_LABELS, CLIPS_DIR, UPSERT_REVIEW_SEGMENT
+from frigate.events.external import ManualEventState
 from frigate.models import ReviewSegment
 from frigate.object_processing import TrackedObject
 from frigate.util.image import SharedMemoryFrameManager, calculate_16_9_crop
@@ -45,9 +47,7 @@ class PendingReviewSegment:
         camera: str,
         frame_time: float,
         severity: SeverityEnum,
-        detections: set[str] = set(),
-        objects: set[str] = set(),
-        sub_labels: set[str] = set(),
+        detections: dict[str, str],
         zones: set[str] = set(),
         audio: set[str] = set(),
         motion: list[int] = [],
@@ -58,8 +58,6 @@ class PendingReviewSegment:
         self.start_time = frame_time
         self.severity = severity
         self.detections = detections
-        self.objects = objects
-        self.sub_labels = sub_labels
         self.zones = zones
         self.audio = audio
         self.sig_motion_areas = motion
@@ -114,9 +112,8 @@ class PendingReviewSegment:
             ReviewSegment.severity: self.severity.value,
             ReviewSegment.thumb_path: path,
             ReviewSegment.data: {
-                "detections": list(self.detections),
-                "objects": list(self.objects),
-                "sub_labels": list(self.sub_labels),
+                "detections": list(set(self.detections.keys())),
+                "objects": list(set(self.detections.values())),
                 "zones": list(self.zones),
                 "audio": list(self.audio),
                 "significant_motion_areas": self.sig_motion_areas,
@@ -138,6 +135,9 @@ class ReviewSegmentMaintainer(threading.Thread):
         self.requestor = InterProcessRequestor()
         self.config_subscriber = ConfigSubscriber("config/record/")
         self.detection_subscriber = DetectionSubscriber(DetectionTypeEnum.all)
+
+        # manual events
+        self.indefinite_events: dict[str, dict[str, any]] = {}
 
         self.stop_event = stop_event
 
@@ -165,7 +165,8 @@ class ReviewSegmentMaintainer(threading.Thread):
         active_objects = get_active_objects(frame_time, camera_config, objects)
 
         if len(active_objects) > 0:
-            segment.last_update = frame_time
+            if frame_time > segment.last_update:
+                segment.last_update = frame_time
 
             # update type for this segment now that active objects are detected
             if segment.severity == SeverityEnum.signification_motion:
@@ -180,11 +181,12 @@ class ReviewSegmentMaintainer(threading.Thread):
                 self.frame_manager.close(frame_id)
 
             for object in active_objects:
-                segment.detections.add(object["id"])
-                segment.objects.add(object["label"])
-
-                if object["sub_label"]:
-                    segment.sub_labels.add(object["sub_label"][0])
+                if not object["sub_label"]:
+                    segment.detections[object["id"]] = object["label"]
+                elif object["sub_label"][0] in ALL_ATTRIBUTE_LABELS:
+                    segment.detections[object["id"]] = object["sub_label"][0]
+                else:
+                    segment.detections[object["id"]] = f'{object["label"]}-verified'
 
                 # if object is alert label and has qualified for recording
                 # mark this review as alert
@@ -202,7 +204,8 @@ class ReviewSegmentMaintainer(threading.Thread):
             segment.severity == SeverityEnum.signification_motion
             and len(motion) >= THRESHOLD_MOTION_ACTIVITY
         ):
-            segment.last_update = frame_time
+            if frame_time > segment.last_update:
+                segment.last_update = frame_time
         else:
             if segment.severity == SeverityEnum.alert and frame_time > (
                 segment.last_update + THRESHOLD_ALERT_ACTIVITY
@@ -224,9 +227,7 @@ class ReviewSegmentMaintainer(threading.Thread):
 
         if len(active_objects) > 0:
             has_sig_object = False
-            detections: set = set()
-            objects: set = set()
-            sub_labels: set = set()
+            detections: dict[str, str] = {}
             zones: set = set()
 
             for object in active_objects:
@@ -237,11 +238,12 @@ class ReviewSegmentMaintainer(threading.Thread):
                 ):
                     has_sig_object = True
 
-                detections.add(object["id"])
-                objects.add(object["label"])
-
-                if object["sub_label"]:
-                    sub_labels.add(object["sub_label"][0])
+                if not object["sub_label"]:
+                    detections[object["id"]] = object["label"]
+                elif object["sub_label"][0] in ALL_ATTRIBUTE_LABELS:
+                    detections[object["id"]] = object["sub_label"][0]
+                else:
+                    detections[object["id"]] = f'{object["label"]}-verified'
 
                 zones.update(object["current_zones"])
 
@@ -250,8 +252,6 @@ class ReviewSegmentMaintainer(threading.Thread):
                 frame_time,
                 SeverityEnum.alert if has_sig_object else SeverityEnum.detection,
                 detections,
-                objects=objects,
-                sub_labels=sub_labels,
                 audio=set(),
                 zones=zones,
                 motion=[],
@@ -268,9 +268,8 @@ class ReviewSegmentMaintainer(threading.Thread):
                 camera,
                 frame_time,
                 SeverityEnum.signification_motion,
-                detections=set(),
-                objects=set(),
-                sub_labels=set(),
+                detections={},
+                audio=set(),
                 motion=motion,
                 zones=set(),
             )
@@ -310,6 +309,15 @@ class ReviewSegmentMaintainer(threading.Thread):
                     dBFS,
                     audio_detections,
                 ) = data
+            elif topic == DetectionTypeEnum.api:
+                (
+                    camera,
+                    frame_time,
+                    manual_info,
+                ) = data
+
+                if camera not in self.indefinite_events:
+                    self.indefinite_events[camera] = {}
 
             if not self.config.cameras[camera].record.enabled:
                 continue
@@ -325,8 +333,31 @@ class ReviewSegmentMaintainer(threading.Thread):
                         motion_boxes,
                     )
                 elif topic == DetectionTypeEnum.audio and len(audio_detections) > 0:
-                    current_segment.last_update = frame_time
+                    if frame_time > current_segment.last_update:
+                        current_segment.last_update = frame_time
+
                     current_segment.audio.update(audio_detections)
+                elif topic == DetectionTypeEnum.api:
+                    if manual_info["state"] == ManualEventState.complete:
+                        current_segment.detections[manual_info["event_id"]] = (
+                            manual_info["label"]
+                        )
+                        current_segment.severity = SeverityEnum.alert
+                        current_segment.last_update = manual_info["end_time"]
+                    elif manual_info["state"] == ManualEventState.start:
+                        self.indefinite_events[camera][manual_info["event_id"]] = (
+                            manual_info["label"]
+                        )
+                        current_segment.detections[manual_info["event_id"]] = (
+                            manual_info["label"]
+                        )
+                        current_segment.severity = SeverityEnum.alert
+
+                        # temporarily make it so this event can not end
+                        current_segment.last_update = sys.maxsize
+                    elif manual_info["state"] == ManualEventState.end:
+                        self.indefinite_events[camera].pop(manual_info["event_id"])
+                        current_segment.last_update = manual_info["end_time"]
             else:
                 if topic == DetectionTypeEnum.video:
                     self.check_if_new_segment(
@@ -340,13 +371,32 @@ class ReviewSegmentMaintainer(threading.Thread):
                         camera,
                         frame_time,
                         SeverityEnum.detection,
-                        set(),
-                        set(),
-                        set(),
+                        {},
                         set(),
                         set(audio_detections),
                         [],
                     )
+                elif topic == DetectionTypeEnum.api:
+                    self.active_review_segments[camera] = PendingReviewSegment(
+                        camera,
+                        frame_time,
+                        SeverityEnum.alert,
+                        {manual_info["event_id"]: manual_info["label"]},
+                        set(),
+                        set(),
+                        [],
+                    )
+
+                    if manual_info["state"] == ManualEventState.start:
+                        self.indefinite_events[camera][manual_info["event_id"]] = (
+                            manual_info["label"]
+                        )
+                        # temporarily make it so this event can not end
+                        self.active_review_segments[camera] = sys.maxsize
+                    elif manual_info["state"] == ManualEventState.complete:
+                        self.active_review_segments[camera].last_update = manual_info[
+                            "end_time"
+                        ]
 
 
 def get_active_objects(

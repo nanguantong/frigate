@@ -8,11 +8,12 @@ import zmq
 
 SOCKET_CONTROL = "inproc://control.detections_updater"
 SOCKET_PUB = "ipc:///tmp/cache/detect_pub"
-SOCKET_SUB = "ipc:///tmp/cache/detect_sun"
+SOCKET_SUB = "ipc:///tmp/cache/detect_sub"
 
 
 class DetectionTypeEnum(str, Enum):
     all = ""
+    api = "api"
     video = "video"
     audio = "audio"
 

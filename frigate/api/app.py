@@ -9,14 +9,7 @@ from datetime import datetime, timedelta
 from functools import reduce
 
 import requests
-from flask import (
-    Blueprint,
-    Flask,
-    current_app,
-    jsonify,
-    make_response,
-    request,
-)
+from flask import Blueprint, Flask, current_app, jsonify, make_response, request
 from markupsafe import escape
 from peewee import operator
 from playhouse.sqliteq import SqliteQueueDatabase
@@ -134,12 +127,20 @@ def stats():
 
 @bp.route("/stats/history")
 def stats_history():
-    return jsonify(current_app.stats_emitter.get_stats_history())
+    keys = request.args.get("keys", default=None)
+
+    if keys:
+        keys = keys.split(",")
+
+    return jsonify(current_app.stats_emitter.get_stats_history(keys))
 
 
 @bp.route("/config")
 def config():
-    config = current_app.frigate_config.model_dump(mode="json", exclude_none=True)
+    config_obj: FrigateConfig = current_app.frigate_config
+    config: dict[str, dict[str, any]] = config_obj.model_dump(
+        mode="json", exclude_none=True
+    )
 
     # remove the mqtt password
     config["mqtt"].pop("password", None)
@@ -156,9 +157,13 @@ def config():
         for cmd in camera_dict["ffmpeg_cmds"]:
             cmd["cmd"] = clean_camera_user_pass(" ".join(cmd["cmd"]))
 
+        # ensure that zones are relative
+        for zone_name, zone in config_obj.cameras[camera_name].zones.items():
+            camera_dict["zones"][zone_name]["color"] = zone.color
+
     config["plus"] = {"enabled": current_app.plus_api.is_active()}
 
-    for detector, detector_config in config["detectors"].items():
+    for detector_config in config["detectors"].values():
         detector_config["model"]["labelmap"] = (
             current_app.frigate_config.model.merged_labelmap
         )
@@ -425,11 +430,49 @@ def logs(service: str):
             404,
         )
 
+    start = request.args.get("start", type=int, default=0)
+    end = request.args.get("end", type=int)
+
     try:
         file = open(service_location, "r")
         contents = file.read()
         file.close()
-        return contents, 200
+
+        # use the start timestamp to group logs together``
+        logLines = []
+        keyLength = 0
+        dateEnd = 0
+        currentKey = ""
+        currentLine = ""
+
+        for rawLine in contents.splitlines():
+            cleanLine = rawLine.strip()
+
+            if len(cleanLine) < 10:
+                continue
+
+            if dateEnd == 0:
+                dateEnd = cleanLine.index("  ")
+                keyLength = dateEnd - (6 if service_location == "frigate" else 0)
+
+            newKey = cleanLine[0:keyLength]
+
+            if newKey == currentKey:
+                currentLine += f"\n{cleanLine[dateEnd:].strip()}"
+                continue
+            else:
+                if len(currentLine) > 0:
+                    logLines.append(currentLine)
+
+                currentKey = newKey
+                currentLine = cleanLine
+
+        logLines.append(currentLine)
+
+        return make_response(
+            jsonify({"totalLines": len(logLines), "lines": logLines[start:end]}),
+            200,
+        )
     except FileNotFoundError as e:
         logger.error(e)
         return make_response(

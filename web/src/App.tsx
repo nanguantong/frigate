@@ -7,11 +7,11 @@ import { isDesktop, isMobile } from "react-device-detect";
 import Statusbar from "./components/Statusbar";
 import Bottombar from "./components/navigation/Bottombar";
 import { Suspense, lazy } from "react";
+import { Redirect } from "./components/navigation/Redirect";
 
 const Live = lazy(() => import("@/pages/Live"));
 const Events = lazy(() => import("@/pages/Events"));
 const Export = lazy(() => import("@/pages/Export"));
-const Storage = lazy(() => import("@/pages/Storage"));
 const SubmitPlus = lazy(() => import("@/pages/SubmitPlus"));
 const ConfigEditor = lazy(() => import("@/pages/ConfigEditor"));
 const System = lazy(() => import("@/pages/System"));
@@ -25,20 +25,20 @@ function App() {
     <Providers>
       <BrowserRouter>
         <Wrapper>
-          <div className="size-full pt-2 overflow-hidden">
+          <div className="size-full overflow-hidden">
             {isDesktop && <Sidebar />}
             {isDesktop && <Statusbar />}
             {isMobile && <Bottombar />}
             <div
               id="pageRoot"
-              className={`absolute top-2 right-0 overflow-hidden ${isMobile ? "left-0 bottom-16" : "left-16 bottom-8"}`}
+              className={`absolute top-0 right-0 overflow-hidden ${isMobile ? "left-0 bottom-16" : "left-[52px] bottom-8"}`}
             >
               <Suspense>
                 <Routes>
                   <Route path="/" element={<Live />} />
-                  <Route path="/events" element={<Events />} />
+                  <Route path="/events" element={<Redirect to="/review" />} />
+                  <Route path="/review" element={<Events />} />
                   <Route path="/export" element={<Export />} />
-                  <Route path="/storage" element={<Storage />} />
                   <Route path="/plus" element={<SubmitPlus />} />
                   <Route path="/system" element={<System />} />
                   <Route path="/settings" element={<Settings />} />

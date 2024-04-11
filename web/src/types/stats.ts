@@ -47,7 +47,7 @@ export type ServiceStats = {
   last_updated: number;
   storage: { [path: string]: StorageStats };
   temperatures: { [apex: string]: number };
-  update: number;
+  uptime: number;
   latest_version: string;
   version: string;
 };
@@ -57,4 +57,15 @@ export type StorageStats = {
   total: number;
   used: number;
   mount_type: string;
+};
+
+export type PotentialProblem = {
+  text: string;
+  color: string;
+};
+
+export type Vainfo = {
+  return_code: number;
+  stdout: string;
+  stderr: string;
 };

@@ -20,11 +20,12 @@ import { useFormattedTimestamp } from "@/hooks/use-date-utils";
 import useSWR from "swr";
 import { FrigateConfig } from "@/types/frigateConfig";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import ReviewActivityCalendar from "./ReviewActivityCalendar";
+import { TimezoneAwareCalendar } from "./ReviewActivityCalendar";
 import { SelectSeparator } from "../ui/select";
 import { isDesktop } from "react-device-detect";
 import { Drawer, DrawerContent, DrawerTrigger } from "../ui/drawer";
 import SaveExportOverlay from "./SaveExportOverlay";
+import { getUTCOffset } from "@/utils/dateUtil";
 
 const EXPORT_OPTIONS = [
   "1",
@@ -63,10 +64,13 @@ export default function ExportDialog({
     }
 
     axios
-      .post(`export/${camera}/start/${range.after}/end/${range.before}`, {
-        playback: "realtime",
-        name,
-      })
+      .post(
+        `export/${camera}/start/${Math.round(range.after)}/end/${Math.round(range.before)}`,
+        {
+          playback: "realtime",
+          name,
+        },
+      )
       .then((response) => {
         if (response.status == 200) {
           toast.success(
@@ -115,14 +119,13 @@ export default function ExportDialog({
         <Trigger asChild>
           <Button
             className="flex items-center gap-2"
-            variant="secondary"
             size="sm"
             onClick={() => {
               setMode("select");
             }}
           >
-            <FaArrowDown className="p-1 fill-secondary bg-muted-foreground rounded-md" />
-            {isDesktop && "Export"}
+            <FaArrowDown className="p-1 fill-secondary bg-secondary-foreground rounded-md" />
+            {isDesktop && <div className="text-primary">Export</div>}
           </Button>
         </Trigger>
         <Content
@@ -215,11 +218,11 @@ export function ExportContent({
           <DialogHeader>
             <DialogTitle>Export</DialogTitle>
           </DialogHeader>
-          <SelectSeparator className="bg-secondary" />
+          <SelectSeparator className="my-4 bg-secondary" />
         </>
       )}
       <RadioGroup
-        className={`flex flex-col gap-3 ${isDesktop ? "" : "mt-4"}`}
+        className={`flex flex-col gap-4 ${isDesktop ? "" : "mt-4"}`}
         onValueChange={(value) => onSelectTime(value as ExportOption)}
       >
         {EXPORT_OPTIONS.map((opt) => {
@@ -253,13 +256,13 @@ export function ExportContent({
         />
       )}
       <Input
-        className="mt-3"
+        className="my-6"
         type="search"
         placeholder="Name the Export"
         value={name}
         onChange={(e) => setName(e.target.value)}
       />
-      {isDesktop && <SelectSeparator className="bg-secondary" />}
+      {isDesktop && <SelectSeparator className="my-4 bg-secondary" />}
       <DialogFooter
         className={isDesktop ? "" : "mt-3 flex flex-col-reverse gap-4"}
       >
@@ -305,14 +308,42 @@ function CustomTimeSelector({
 
   // times
 
-  const startTime = useMemo(
-    () => range?.after || latestTime - 3600,
-    [range, latestTime],
+  const timezoneOffset = useMemo(
+    () =>
+      config?.ui.timezone
+        ? Math.round(getUTCOffset(new Date(), config.ui.timezone))
+        : undefined,
+    [config?.ui.timezone],
   );
-  const endTime = useMemo(
-    () => range?.before || latestTime,
-    [range, latestTime],
+  const localTimeOffset = useMemo(
+    () =>
+      Math.round(
+        getUTCOffset(
+          new Date(),
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ),
+      ),
+    [],
   );
+
+  const startTime = useMemo(() => {
+    let time = range?.after || latestTime - 3600;
+
+    if (timezoneOffset) {
+      time = time + (timezoneOffset - localTimeOffset) * 60;
+    }
+
+    return time;
+  }, [range, latestTime, timezoneOffset, localTimeOffset]);
+  const endTime = useMemo(() => {
+    let time = range?.before || latestTime;
+
+    if (timezoneOffset) {
+      time = time + (timezoneOffset - localTimeOffset) * 60;
+    }
+
+    return time;
+  }, [range, latestTime, timezoneOffset, localTimeOffset]);
   const formattedStart = useFormattedTimestamp(
     startTime,
     config?.ui.time_format == "24hour"
@@ -342,7 +373,7 @@ function CustomTimeSelector({
 
   return (
     <div
-      className={`flex items-center bg-secondary rounded-lg ${isDesktop ? "mx-8 px-2 gap-2" : "pl-2 mt-3"}`}
+      className={`mt-3 flex items-center bg-secondary text-secondary-foreground rounded-lg ${isDesktop ? "mx-8 px-2 gap-2" : "pl-2"}`}
     >
       <FaCalendarAlt />
       <Popover
@@ -355,8 +386,8 @@ function CustomTimeSelector({
       >
         <PopoverTrigger asChild>
           <Button
-            className={isDesktop ? "" : "text-xs"}
-            variant={startOpen ? "select" : "secondary"}
+            className={`text-primary ${isDesktop ? "" : "text-xs"}`}
+            variant={startOpen ? "select" : "default"}
             size="sm"
             onClick={() => {
               setStartOpen(true);
@@ -367,7 +398,8 @@ function CustomTimeSelector({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="flex flex-col items-center">
-          <ReviewActivityCalendar
+          <TimezoneAwareCalendar
+            timezone={config?.ui.timezone}
             selectedDay={new Date(startTime * 1000)}
             onSelect={(day) => {
               if (!day) {
@@ -405,7 +437,7 @@ function CustomTimeSelector({
           />
         </PopoverContent>
       </Popover>
-      <FaArrowRight className="size-4" />
+      <FaArrowRight className="size-4 text-primary" />
       <Popover
         open={endOpen}
         onOpenChange={(open) => {
@@ -416,8 +448,8 @@ function CustomTimeSelector({
       >
         <PopoverTrigger asChild>
           <Button
-            className={isDesktop ? "" : "text-xs"}
-            variant={endOpen ? "select" : "secondary"}
+            className={`text-primary ${isDesktop ? "" : "text-xs"}`}
+            variant={endOpen ? "select" : "default"}
             size="sm"
             onClick={() => {
               setEndOpen(true);
@@ -428,7 +460,8 @@ function CustomTimeSelector({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="flex flex-col items-center">
-          <ReviewActivityCalendar
+          <TimezoneAwareCalendar
+            timezone={config?.ui.timezone}
             selectedDay={new Date(endTime * 1000)}
             onSelect={(day) => {
               if (!day) {

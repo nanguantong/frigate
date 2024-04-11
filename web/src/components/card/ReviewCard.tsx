@@ -2,7 +2,7 @@ import { baseUrl } from "@/api/baseUrl";
 import { useFormattedTimestamp } from "@/hooks/use-date-utils";
 import { FrigateConfig } from "@/types/frigateConfig";
 import { ReviewSegment } from "@/types/review";
-import { getIconForLabel, getIconForSubLabel } from "@/utils/iconUtil";
+import { getIconForLabel } from "@/utils/iconUtil";
 import { isSafari } from "react-device-detect";
 import useSWR from "swr";
 import TimeAgo from "../dynamic/TimeAgo";
@@ -33,16 +33,16 @@ export default function ReviewCard({
 
   return (
     <div
-      className="w-full flex flex-col gap-1.5 cursor-pointer"
+      className="w-full relative flex flex-col gap-1.5 cursor-pointer"
       onClick={onClick}
     >
       <ImageLoadingIndicator
-        className="size-full aspect-video"
+        className="absolute inset-0"
         imgLoaded={imgLoaded}
       />
       <img
         ref={imgRef}
-        className={`size-full rounded-lg ${isSelected ? "outline outline-3 outline-offset-1 outline-selected" : ""} ${imgLoaded ? "visible" : "invisible"}`}
+        className={`size-full rounded-lg ${isSelected ? "outline outline-[3px] outline-offset-1 outline-selected" : ""} ${imgLoaded ? "visible" : "invisible"}`}
         src={`${baseUrl}${event.thumb_path.replace("/media/frigate/", "")}`}
         loading={isSafari ? "eager" : "lazy"}
         onLoad={() => {
@@ -56,9 +56,6 @@ export default function ReviewCard({
           })}
           {event.data.audio.map((audio) => {
             return getIconForLabel(audio, "size-3 text-white");
-          })}
-          {event.data.sub_labels?.map((sub) => {
-            return getIconForSubLabel(sub, "size-3 text-white");
           })}
           <div className="font-extra-light text-xs">{formattedDate}</div>
         </div>

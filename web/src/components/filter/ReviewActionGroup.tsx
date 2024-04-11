@@ -35,12 +35,12 @@ export default function ReviewActionGroup({
   }, [selectedReviews, setSelectedReviews, pullLatestData]);
 
   return (
-    <div className="absolute inset-x-2 inset-y-0 md:left-auto md:right-2 p-2 flex gap-2 justify-between items-center bg-background">
+    <div className="absolute inset-x-2 inset-y-0 md:left-auto py-2 flex gap-2 justify-between items-center bg-background">
       <div className="mx-1 flex justify-center items-center text-sm text-muted-foreground">
         <div className="p-1">{`${selectedReviews.length} selected`}</div>
         <div className="p-1">{"|"}</div>
         <div
-          className="p-2 text-primary-foreground cursor-pointer hover:bg-secondary hover:rounded-lg"
+          className="p-2 text-primary cursor-pointer hover:bg-secondary hover:rounded-lg"
           onClick={onClearSelected}
         >
           Unselect
@@ -50,7 +50,6 @@ export default function ReviewActionGroup({
         {selectedReviews.length == 1 && (
           <Button
             className="p-2 flex items-center gap-2"
-            variant="secondary"
             size="sm"
             onClick={() => {
               onExport(selectedReviews[0]);
@@ -58,26 +57,24 @@ export default function ReviewActionGroup({
             }}
           >
             <FaCompactDisc />
-            {isDesktop && "Export"}
+            {isDesktop && <div className="text-primary">Export</div>}
           </Button>
         )}
         <Button
           className="p-2 flex items-center gap-2"
-          variant="secondary"
           size="sm"
           onClick={onMarkAsReviewed}
         >
           <FaCircleCheck />
-          {isDesktop && "Mark as reviewed"}
+          {isDesktop && <div className="text-primary">Mark as reviewed</div>}
         </Button>
         <Button
           className="p-2 flex items-center gap-1"
-          variant="secondary"
           size="sm"
           onClick={onDelete}
         >
           <HiTrash />
-          {isDesktop && "Delete"}
+          {isDesktop && <div className="text-primary">Delete</div>}
         </Button>
       </div>
     </div>

@@ -1,15 +1,16 @@
 import Logo from "../Logo";
 import { navbarLinks } from "@/pages/site-navigation";
-import SettingsNavItems from "../settings/SettingsNavItems";
 import NavItem from "./NavItem";
 import { CameraGroupSelector } from "../filter/CameraGroupSelector";
 import { useLocation } from "react-router-dom";
+import GeneralSettings from "../settings/GeneralSettings";
+import AccountSettings from "../settings/AccountSettings";
 
 function Sidebar() {
   const location = useLocation();
 
   return (
-    <aside className="absolute w-[52px] z-10 left-o inset-y-0 overflow-y-auto scrollbar-hidden py-4 flex flex-col justify-between bg-primary border-r border-secondary-highlight">
+    <aside className="absolute w-[52px] z-10 left-o inset-y-0 overflow-y-auto scrollbar-hidden py-4 flex flex-col justify-between bg-background_alt border-r border-secondary-highlight">
       <span tabIndex={0} className="sr-only" />
       <div className="w-full flex flex-col gap-0 items-center">
         <Logo className="w-8 h-8 mb-6" />
@@ -31,7 +32,10 @@ function Sidebar() {
           );
         })}
       </div>
-      <SettingsNavItems className="hidden md:flex flex-col items-center mb-8" />
+      <div className="flex flex-col items-center mb-8">
+        <GeneralSettings />
+        <AccountSettings />
+      </div>
     </aside>
   );
 }

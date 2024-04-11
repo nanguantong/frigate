@@ -62,6 +62,7 @@ from frigate.stats.util import stats_init
 from frigate.storage import StorageMaintainer
 from frigate.timeline import TimelineProcessor
 from frigate.types import CameraMetricsTypes, PTZMetricsTypes
+from frigate.util.builtin import save_default_config
 from frigate.util.object import get_camera_regions_grid
 from frigate.version import VERSION
 from frigate.video import capture_camera, track_camera
@@ -119,6 +120,11 @@ class FrigateApp:
         config_file_yaml = config_file.replace(".yml", ".yaml")
         if os.path.isfile(config_file_yaml):
             config_file = config_file_yaml
+
+        if not os.path.isfile(config_file):
+            print("No config file found, saving default config")
+            config_file = config_file_yaml
+            save_default_config(config_file)
 
         user_config = FrigateConfig.parse_file(config_file)
         self.config = user_config.runtime_config(self.plus_api)
@@ -194,9 +200,6 @@ class FrigateApp:
             logging.getLogger("ws4py").setLevel("ERROR")
 
     def init_queues(self) -> None:
-        # Queues for clip processing
-        self.event_processed_queue: Queue = mp.Queue()
-
         # Queue for cameras to push tracked objects to
         self.detected_frames_queue: Queue = mp.Queue(
             maxsize=sum(camera.enabled for camera in self.config.cameras.values()) * 2
@@ -414,7 +417,6 @@ class FrigateApp:
             self.config,
             self.dispatcher,
             self.detected_frames_queue,
-            self.event_processed_queue,
             self.ptz_autotracker_thread,
             self.stop_event,
         )
@@ -499,7 +501,7 @@ class FrigateApp:
             )
             audio_process.daemon = True
             audio_process.start()
-            self.processes["audioDetector"] = audio_process.pid or 0
+            self.processes["audio_detector"] = audio_process.pid or 0
             logger.info(f"Audio process started: {audio_process.pid}")
 
     def start_timeline_processor(self) -> None:
@@ -511,7 +513,6 @@ class FrigateApp:
     def start_event_processor(self) -> None:
         self.event_processor = EventProcessor(
             self.config,
-            self.event_processed_queue,
             self.timeline_queue,
             self.stop_event,
         )
@@ -698,7 +699,6 @@ class FrigateApp:
             shm.unlink()
 
         for queue in [
-            self.event_processed_queue,
             self.detected_frames_queue,
             self.log_queue,
         ]:

@@ -135,6 +135,7 @@ export default function SubmitPlus() {
                   This is a {upload?.label}
                 </Button>
                 <Button
+                  className="text-white"
                   variant="destructive"
                   onClick={() => onSubmitToPlus(true)}
                 >
@@ -236,9 +237,9 @@ function PlusFilterGroup({
         }}
       >
         <Trigger asChild>
-          <Button size="sm" className="mx-1 capitalize" variant="secondary">
-            <FaVideo className="md:mr-[10px] text-muted-foreground" />
-            <div className="hidden md:block">
+          <Button size="sm" className="mx-1 capitalize">
+            <FaVideo className="md:mr-[10px] text-secondary-foreground" />
+            <div className="hidden md:block text-primary">
               {selectedCameras == undefined
                 ? "All Cameras"
                 : `${selectedCameras.length} Cameras`}
@@ -313,9 +314,9 @@ function PlusFilterGroup({
         }}
       >
         <Trigger asChild>
-          <Button size="sm" className="mx-1 capitalize" variant="secondary">
-            <FaList className="md:mr-[10px] text-muted-foreground" />
-            <div className="hidden md:block">
+          <Button size="sm" className="mx-1 capitalize">
+            <FaList className="md:mr-[10px] text-secondary-foreground" />
+            <div className="hidden md:block text-primary">
               {selectedLabels == undefined
                 ? "All Labels"
                 : `${selectedLabels.length} Labels`}

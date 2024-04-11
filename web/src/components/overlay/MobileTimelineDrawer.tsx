@@ -22,8 +22,8 @@ export default function MobileTimelineDrawer({
   return (
     <Drawer open={drawer} onOpenChange={setDrawer}>
       <DrawerTrigger asChild>
-        <Button className="rounded-lg capitalize" size="sm" variant="secondary">
-          <FaFlag className="text-muted-foreground" />
+        <Button className="rounded-lg capitalize" size="sm">
+          <FaFlag className="text-secondary-foreground" />
         </Button>
       </DrawerTrigger>
       <DrawerContent className="max-h-[75dvh] overflow-hidden flex flex-col items-center gap-2 px-4 pb-4 mx-1 rounded-t-2xl">

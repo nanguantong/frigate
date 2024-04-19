@@ -72,7 +72,7 @@ export function ThresholdBarGraph({
           } else if (value >= threshold.warning) {
             return "#FF9966";
           } else {
-            return (systemTheme || theme) == "dark" ? "#404040" : "#E5E5E5";
+            return "#217930";
           }
         },
       ],
@@ -90,8 +90,18 @@ export function ThresholdBarGraph({
           distributed: true,
         },
       },
+      states: {
+        active: {
+          filter: {
+            type: "none",
+          },
+        },
+      },
       tooltip: {
         theme: systemTheme || theme,
+        y: {
+          formatter: (val) => `${val}${unit}`,
+        },
       },
       markers: {
         size: 0,
@@ -118,7 +128,7 @@ export function ThresholdBarGraph({
         min: 0,
       },
     } as ApexCharts.ApexOptions;
-  }, [graphId, threshold, systemTheme, theme, formatTime]);
+  }, [graphId, threshold, unit, systemTheme, theme, formatTime]);
 
   useEffect(() => {
     ApexCharts.exec(graphId, "updateOptions", options, true, true);
@@ -189,8 +199,20 @@ export function StorageGraph({ graphId, used, total }: StorageGraphProps) {
           horizontal: true,
         },
       },
+      states: {
+        active: {
+          filter: {
+            type: "none",
+          },
+        },
+        hover: {
+          filter: {
+            type: "none",
+          },
+        },
+      },
       tooltip: {
-        show: false,
+        enabled: false,
       },
       xaxis: {
         axisBorder: {

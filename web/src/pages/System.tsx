@@ -1,6 +1,6 @@
 import useSWR from "swr";
 import { FrigateStats } from "@/types/stats";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import TimeAgo from "@/components/dynamic/TimeAgo";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { isDesktop, isMobile } from "react-device-detect";
@@ -21,6 +21,10 @@ function System() {
   const [page, setPage] = useState<SystemMetric>("general");
   const [pageToggle, setPageToggle] = useOptimisticState(page, setPage, 100);
   const [lastUpdated, setLastUpdated] = useState<number>(Date.now() / 1000);
+
+  useEffect(() => {
+    document.title = `${pageToggle[0].toUpperCase()}${pageToggle.substring(1)} Stats - Frigate`;
+  }, [pageToggle]);
 
   // stats collection
 
@@ -48,7 +52,7 @@ function System() {
           {Object.values(metrics).map((item) => (
             <ToggleGroupItem
               key={item}
-              className={`flex items-center justify-between gap-2 ${pageToggle == item ? "" : "*:text-gray-500"}`}
+              className={`flex items-center justify-between gap-2 ${pageToggle == item ? "" : "*:text-muted-foreground"}`}
               value={item}
               aria-label={`Select ${item}`}
             >

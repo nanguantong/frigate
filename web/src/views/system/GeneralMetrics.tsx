@@ -5,6 +5,7 @@ import { useFrigateStats } from "@/api/ws";
 import {
   DetectorCpuThreshold,
   DetectorMemThreshold,
+  DetectorTempThreshold,
   GPUMemThreshold,
   GPUUsageThreshold,
   InferenceThreshold,
@@ -105,6 +106,44 @@ export default function GeneralMetrics({
     return Object.values(series);
   }, [statsHistory]);
 
+  const detTempSeries = useMemo(() => {
+    if (!statsHistory) {
+      return [];
+    }
+
+    if (
+      statsHistory.length > 0 &&
+      Object.keys(statsHistory[0].service.temperatures).length == 0
+    ) {
+      return undefined;
+    }
+
+    const series: {
+      [key: string]: { name: string; data: { x: number; y: number }[] };
+    } = {};
+
+    statsHistory.forEach((stats, statsIdx) => {
+      if (!stats) {
+        return;
+      }
+
+      Object.entries(stats.detectors).forEach(([key], cIdx) => {
+        if (cIdx <= Object.keys(stats.service.temperatures).length) {
+          if (!(key in series)) {
+            series[key] = {
+              name: key,
+              data: [],
+            };
+          }
+
+          const temp = Object.values(stats.service.temperatures)[cIdx];
+          series[key].data.push({ x: statsIdx + 1, y: Math.round(temp) });
+        }
+      });
+    });
+    return Object.values(series);
+  }, [statsHistory]);
+
   const detCpuSeries = useMemo(() => {
     if (!statsHistory) {
       return [];
@@ -182,7 +221,7 @@ export default function GeneralMetrics({
           series[key] = { name: key, data: [] };
         }
 
-        series[key].data.push({ x: statsIdx + 1, y: stats.gpu });
+        series[key].data.push({ x: statsIdx + 1, y: stats.gpu.slice(0, -1) });
       });
     });
     return Object.keys(series).length > 0 ? Object.values(series) : [];
@@ -215,7 +254,7 @@ export default function GeneralMetrics({
           series[key] = { name: key, data: [] };
         }
 
-        series[key].data.push({ x: statsIdx + 1, y: stats.mem });
+        series[key].data.push({ x: statsIdx + 1, y: stats.mem.slice(0, -1) });
       });
     });
     return Object.values(series);
@@ -291,7 +330,9 @@ export default function GeneralMetrics({
         <div className="text-muted-foreground text-sm font-medium">
           Detectors
         </div>
-        <div className="w-full mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div
+          className={`w-full mt-4 grid grid-cols-1 gap-2 ${detTempSeries == undefined ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}
+        >
           {statsHistory.length != 0 ? (
             <div className="p-2.5 bg-background_alt rounded-2xl">
               <div className="mb-5">Detector Inference Speed</div>
@@ -307,6 +348,28 @@ export default function GeneralMetrics({
                 />
               ))}
             </div>
+          ) : (
+            <Skeleton className="w-full aspect-video" />
+          )}
+          {statsHistory.length != 0 ? (
+            <>
+              {detTempSeries && (
+                <div className="p-2.5 bg-background_alt rounded-2xl">
+                  <div className="mb-5">Detector Temperature</div>
+                  {detTempSeries.map((series) => (
+                    <ThresholdBarGraph
+                      key={series.name}
+                      graphId={`${series.name}-temp`}
+                      name={series.name}
+                      unit="°C"
+                      threshold={DetectorTempThreshold}
+                      updateTimes={updateTimes}
+                      data={[series]}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
             <Skeleton className="w-full aspect-video" />
           )}
@@ -373,7 +436,7 @@ export default function GeneralMetrics({
                       key={series.name}
                       graphId={`${series.name}-gpu`}
                       name={series.name}
-                      unit=""
+                      unit="%"
                       threshold={GPUUsageThreshold}
                       updateTimes={updateTimes}
                       data={[series]}
@@ -392,7 +455,7 @@ export default function GeneralMetrics({
                         <ThresholdBarGraph
                           key={series.name}
                           graphId={`${series.name}-mem`}
-                          unit=""
+                          unit="%"
                           name={series.name}
                           threshold={GPUMemThreshold}
                           updateTimes={updateTimes}

@@ -11,6 +11,7 @@ import { FaCopy } from "react-icons/fa6";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { isDesktop } from "react-device-detect";
+import ActivityIndicator from "@/components/indicators/activity-indicator";
 
 const logTypes = ["frigate", "go2rtc", "nginx"] as const;
 type LogType = (typeof logTypes)[number];
@@ -28,6 +29,10 @@ const ngSeverity = /(GET)|(POST)|(PUT)|(PATCH)|(DELETE)/;
 
 function Logs() {
   const [logService, setLogService] = useState<LogType>("frigate");
+
+  useEffect(() => {
+    document.title = `${logService[0].toUpperCase()}${logService.substring(1)} Logs - Frigate`;
+  }, [logService]);
 
   // log data handling
 
@@ -274,6 +279,9 @@ function Logs() {
                 }
               })
               .catch(() => {});
+            contentRef.current?.scrollBy({
+              top: 10,
+            });
           }
         });
         if (node) startObserver.current.observe(node);
@@ -344,7 +352,7 @@ function Logs() {
           {Object.values(logTypes).map((item) => (
             <ToggleGroupItem
               key={item}
-              className={`flex items-center justify-between gap-2 ${logService == item ? "" : "text-gray-500"}`}
+              className={`flex items-center justify-between gap-2 ${logService == item ? "" : "text-muted-foreground"}`}
               value={item}
               aria-label={`Select ${item}`}
             >
@@ -358,7 +366,7 @@ function Logs() {
             size="sm"
             onClick={handleCopyLogs}
           >
-            <FaCopy />
+            <FaCopy className="text-secondary-foreground" />
             <div className="hidden md:block text-primary">
               Copy to Clipboard
             </div>
@@ -384,7 +392,7 @@ function Logs() {
         </Button>
       )}
 
-      <div className="size-full flex flex-col my-2 font-mono text-sm sm:p-2 whitespace-pre-wrap bg-background_alt border border-secondary rounded-md overflow-hidden">
+      <div className="relative size-full flex flex-col my-2 font-mono text-sm sm:p-2 whitespace-pre-wrap bg-background_alt border border-secondary rounded-md overflow-hidden">
         <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-12 *:px-2 *:py-3 *:text-sm *:text-primary/40">
           <div className="p-1 flex items-center capitalize">Type</div>
           <div className="col-span-2 sm:col-span-1 flex items-center">
@@ -439,6 +447,9 @@ function Logs() {
             })}
           {logLines.length > 0 && <div id="page-bottom" ref={endLogRef} />}
         </div>
+        {logLines.length == 0 && (
+          <ActivityIndicator className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2" />
+        )}
       </div>
     </div>
   );

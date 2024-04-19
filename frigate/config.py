@@ -46,6 +46,7 @@ from frigate.util.builtin import (
     get_ffmpeg_arg_list,
     load_config_with_no_duplicates,
 )
+from frigate.util.config import get_relative_coordinates
 from frigate.util.image import create_mask
 from frigate.util.services import auto_detect_hwaccel, get_video_properties
 
@@ -101,7 +102,6 @@ class UIConfig(FrigateBaseModel):
         default=LiveModeEnum.mse, title="Default Live Mode."
     )
     timezone: Optional[str] = Field(default=None, title="Override UI timezone.")
-    use_experimental: bool = Field(default=False, title="Experimental UI")
     time_format: TimeFormatEnum = Field(
         default=TimeFormatEnum.browser, title="Override UI time format."
     )
@@ -245,10 +245,6 @@ class EventsConfig(FrigateBaseModel):
         default=5, title="Seconds to retain before event starts.", le=MAX_PRE_CAPTURE
     )
     post_capture: int = Field(default=5, title="Seconds to retain after event ends.")
-    required_zones: List[str] = Field(
-        default_factory=list,
-        title="List of required zones to be entered in order to save the event.",
-    )
     objects: Optional[List[str]] = Field(
         None,
         title="List of objects to be detected in order to save the event.",
@@ -353,35 +349,7 @@ class RuntimeMotionConfig(MotionConfig):
     def __init__(self, **config):
         frame_shape = config.get("frame_shape", (1, 1))
 
-        mask = config.get("mask", "")
-
-        # masks and zones are saved as relative coordinates
-        # we know if any points are > 1 then it is using the
-        # old native resolution coordinates
-        if mask:
-            if isinstance(mask, list) and any(x > "1.0" for x in mask[0].split(",")):
-                relative_masks = []
-                for m in mask:
-                    points = m.split(",")
-                    relative_masks.append(
-                        ",".join(
-                            [
-                                f"{round(int(points[i]) / frame_shape[1], 3)},{round(int(points[i + 1]) / frame_shape[0], 3)}"
-                                for i in range(0, len(points), 2)
-                            ]
-                        )
-                    )
-
-                mask = relative_masks
-            elif isinstance(mask, str) and any(x > "1.0" for x in mask.split(",")):
-                points = mask.split(",")
-                mask = ",".join(
-                    [
-                        f"{round(int(points[i]) / frame_shape[1], 3)},{round(int(points[i + 1]) / frame_shape[0], 3)}"
-                        for i in range(0, len(points), 2)
-                    ]
-                )
-
+        mask = get_relative_coordinates(config.get("mask", ""), frame_shape)
         config["raw_mask"] = mask
 
         if mask:
@@ -513,34 +481,7 @@ class RuntimeFilterConfig(FilterConfig):
 
     def __init__(self, **config):
         frame_shape = config.get("frame_shape", (1, 1))
-        mask = config.get("mask")
-
-        # masks and zones are saved as relative coordinates
-        # we know if any points are > 1 then it is using the
-        # old native resolution coordinates
-        if mask:
-            if isinstance(mask, list) and any(x > "1.0" for x in mask[0].split(",")):
-                relative_masks = []
-                for m in mask:
-                    points = m.split(",")
-                    relative_masks.append(
-                        ",".join(
-                            [
-                                f"{round(int(points[i]) / frame_shape[1], 3)},{round(int(points[i + 1]) / frame_shape[0], 3)}"
-                                for i in range(0, len(points), 2)
-                            ]
-                        )
-                    )
-
-                mask = relative_masks
-            elif isinstance(mask, str) and any(x > "1.0" for x in mask.split(",")):
-                points = mask.split(",")
-                mask = ",".join(
-                    [
-                        f"{round(int(points[i]) / frame_shape[1], 3)},{round(int(points[i + 1]) / frame_shape[0], 3)}"
-                        for i in range(0, len(points), 2)
-                    ]
-                )
+        mask = get_relative_coordinates(config.get("mask"), frame_shape)
 
         config["raw_mask"] = mask
 
@@ -591,6 +532,14 @@ class ZoneConfig(BaseModel):
     @property
     def contour(self) -> np.ndarray:
         return self._contour
+
+    @field_validator("objects", mode="before")
+    @classmethod
+    def validate_objects(cls, v):
+        if isinstance(v, str) and "," not in v:
+            return [v]
+
+        return v
 
     def __init__(self, **config):
         super().__init__(**config)
@@ -657,11 +606,59 @@ class ZoneConfig(BaseModel):
 
 class ObjectConfig(FrigateBaseModel):
     track: List[str] = Field(default=DEFAULT_TRACKED_OBJECTS, title="Objects to track.")
-    alert: List[str] = Field(
-        default=DEFAULT_ALERT_OBJECTS, title="Objects to create alerts for."
-    )
     filters: Dict[str, FilterConfig] = Field(default={}, title="Object filters.")
     mask: Union[str, List[str]] = Field(default="", title="Object mask.")
+
+
+class AlertsConfig(FrigateBaseModel):
+    """Configure alerts"""
+
+    labels: List[str] = Field(
+        default=DEFAULT_ALERT_OBJECTS, title="Labels to create alerts for."
+    )
+    required_zones: List[str] = Field(
+        default_factory=list,
+        title="List of required zones to be entered in order to save the event as an alert.",
+    )
+
+    @field_validator("required_zones", mode="before")
+    @classmethod
+    def validate_required_zones(cls, v):
+        if isinstance(v, str) and "," not in v:
+            return [v]
+
+        return v
+
+
+class DetectionsConfig(FrigateBaseModel):
+    """Configure detections"""
+
+    labels: Optional[List[str]] = Field(
+        default=None, title="Labels to create detections for."
+    )
+    required_zones: List[str] = Field(
+        default_factory=list,
+        title="List of required zones to be entered in order to save the event as a detection.",
+    )
+
+    @field_validator("required_zones", mode="before")
+    @classmethod
+    def validate_required_zones(cls, v):
+        if isinstance(v, str) and "," not in v:
+            return [v]
+
+        return v
+
+
+class ReviewConfig(FrigateBaseModel):
+    """Configure reviews"""
+
+    alerts: AlertsConfig = Field(
+        default_factory=AlertsConfig, title="Review alerts config."
+    )
+    detections: DetectionsConfig = Field(
+        default_factory=DetectionsConfig, title="Review detections config."
+    )
 
 
 class AudioConfig(FrigateBaseModel):
@@ -942,6 +939,9 @@ class CameraConfig(FrigateBaseModel):
     objects: ObjectConfig = Field(
         default_factory=ObjectConfig, title="Object configuration."
     )
+    review: ReviewConfig = Field(
+        default_factory=ReviewConfig, title="Review configuration."
+    )
     audio: AudioConfig = Field(
         default_factory=AudioConfig, title="Audio events configuration."
     )
@@ -1201,6 +1201,20 @@ def verify_zone_objects_are_tracked(camera_config: CameraConfig) -> None:
                 )
 
 
+def verify_required_zones_exist(camera_config: CameraConfig) -> None:
+    for det_zone in camera_config.review.detections.required_zones:
+        if det_zone not in camera_config.zones.keys():
+            raise ValueError(
+                f"Camera {camera_config.name} has a required zone for detections {det_zone} that is not defined."
+            )
+
+    for det_zone in camera_config.review.alerts.required_zones:
+        if det_zone not in camera_config.zones.keys():
+            raise ValueError(
+                f"Camera {camera_config.name} has a required zone for alerts {det_zone} that is not defined."
+            )
+
+
 def verify_autotrack_zones(camera_config: CameraConfig) -> ValueError | None:
     """Verify that required_zones are specified when autotracking is enabled."""
     if (
@@ -1263,6 +1277,9 @@ class FrigateConfig(FrigateBaseModel):
     objects: ObjectConfig = Field(
         default_factory=ObjectConfig, title="Global object configuration."
     )
+    review: ReviewConfig = Field(
+        default_factory=ReviewConfig, title="Review configuration."
+    )
     audio: AudioConfig = Field(
         default_factory=AudioConfig, title="Global Audio events configuration."
     )
@@ -1310,6 +1327,7 @@ class FrigateConfig(FrigateBaseModel):
                 "snapshots": ...,
                 "live": ...,
                 "objects": ...,
+                "review": ...,
                 "motion": ...,
                 "detect": ...,
                 "ffmpeg": ...,
@@ -1422,9 +1440,15 @@ class FrigateConfig(FrigateBaseModel):
                             else [filter.mask]
                         )
                     object_mask = (
-                        camera_config.objects.mask
-                        if isinstance(camera_config.objects.mask, list)
-                        else [camera_config.objects.mask]
+                        get_relative_coordinates(
+                            (
+                                camera_config.objects.mask
+                                if isinstance(camera_config.objects.mask, list)
+                                else [camera_config.objects.mask]
+                            ),
+                            camera_config.frame_shape,
+                        )
+                        or []
                     )
                     filter.mask = filter_mask + object_mask
 
@@ -1461,6 +1485,7 @@ class FrigateConfig(FrigateBaseModel):
             verify_recording_retention(camera_config)
             verify_recording_segments_setup_with_reasonable_time(camera_config)
             verify_zone_objects_are_tracked(camera_config)
+            verify_required_zones_exist(camera_config)
             verify_autotrack_zones(camera_config)
             verify_motion_and_detect(camera_config)
 

@@ -140,7 +140,7 @@ def stats_history():
 @bp.route("/config")
 def config():
     config_obj: FrigateConfig = current_app.frigate_config
-    config: dict[str, any] = config_obj.model_dump(
+    config: dict[str, dict[str, any]] = config_obj.model_dump(
         mode="json", warnings="none", exclude_none=True
     )
 

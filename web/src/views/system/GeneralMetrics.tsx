@@ -210,6 +210,7 @@ export default function GeneralMetrics({
     const series: {
       [key: string]: { name: string; data: { x: number; y: string }[] };
     } = {};
+    let hasValidGpu = false;
 
     statsHistory.forEach((stats, statsIdx) => {
       if (!stats) {
@@ -221,9 +222,17 @@ export default function GeneralMetrics({
           series[key] = { name: key, data: [] };
         }
 
-        series[key].data.push({ x: statsIdx + 1, y: stats.gpu.slice(0, -1) });
+        if (stats.gpu) {
+          hasValidGpu = true;
+          series[key].data.push({ x: statsIdx + 1, y: stats.gpu.slice(0, -1) });
+        }
       });
     });
+
+    if (!hasValidGpu) {
+      return [];
+    }
+
     return Object.keys(series).length > 0 ? Object.values(series) : [];
   }, [statsHistory]);
 
@@ -243,6 +252,7 @@ export default function GeneralMetrics({
     const series: {
       [key: string]: { name: string; data: { x: number; y: string }[] };
     } = {};
+    let hasValidGpu = false;
 
     statsHistory.forEach((stats, statsIdx) => {
       if (!stats) {
@@ -254,9 +264,17 @@ export default function GeneralMetrics({
           series[key] = { name: key, data: [] };
         }
 
-        series[key].data.push({ x: statsIdx + 1, y: stats.mem.slice(0, -1) });
+        if (stats.mem) {
+          hasValidGpu = true;
+          series[key].data.push({ x: statsIdx + 1, y: stats.mem.slice(0, -1) });
+        }
       });
     });
+
+    if (!hasValidGpu) {
+      return [];
+    }
+
     return Object.values(series);
   }, [statsHistory]);
 
@@ -334,7 +352,7 @@ export default function GeneralMetrics({
           className={`w-full mt-4 grid grid-cols-1 gap-2 ${detTempSeries == undefined ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}
         >
           {statsHistory.length != 0 ? (
-            <div className="p-2.5 bg-background_alt rounded-2xl">
+            <div className="p-2.5 bg-background_alt rounded-lg md:rounded-2xl">
               <div className="mb-5">Detector Inference Speed</div>
               {detInferenceTimeSeries.map((series) => (
                 <ThresholdBarGraph
@@ -349,12 +367,12 @@ export default function GeneralMetrics({
               ))}
             </div>
           ) : (
-            <Skeleton className="w-full aspect-video" />
+            <Skeleton className="w-full rounded-lg md:rounded-2xl aspect-video" />
           )}
           {statsHistory.length != 0 ? (
             <>
               {detTempSeries && (
-                <div className="p-2.5 bg-background_alt rounded-2xl">
+                <div className="p-2.5 bg-background_alt rounded-lg md:rounded-2xl">
                   <div className="mb-5">Detector Temperature</div>
                   {detTempSeries.map((series) => (
                     <ThresholdBarGraph
@@ -374,7 +392,7 @@ export default function GeneralMetrics({
             <Skeleton className="w-full aspect-video" />
           )}
           {statsHistory.length != 0 ? (
-            <div className="p-2.5 bg-background_alt rounded-2xl">
+            <div className="p-2.5 bg-background_alt rounded-lg md:rounded-2xl">
               <div className="mb-5">Detector CPU Usage</div>
               {detCpuSeries.map((series) => (
                 <ThresholdBarGraph
@@ -392,7 +410,7 @@ export default function GeneralMetrics({
             <Skeleton className="w-full aspect-video" />
           )}
           {statsHistory.length != 0 ? (
-            <div className="p-2.5 bg-background_alt rounded-2xl">
+            <div className="p-2.5 bg-background_alt rounded-lg md:rounded-2xl">
               <div className="mb-5">Detector Memory Usage</div>
               {detMemSeries.map((series) => (
                 <ThresholdBarGraph
@@ -429,7 +447,7 @@ export default function GeneralMetrics({
             </div>
             <div className=" mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
               {statsHistory.length != 0 ? (
-                <div className="p-2.5 bg-background_alt rounded-2xl">
+                <div className="p-2.5 bg-background_alt rounded-lg md:rounded-2xl">
                   <div className="mb-5">GPU Usage</div>
                   {gpuSeries.map((series) => (
                     <ThresholdBarGraph
@@ -449,7 +467,7 @@ export default function GeneralMetrics({
               {statsHistory.length != 0 ? (
                 <>
                   {gpuMemSeries && (
-                    <div className="p-2.5 bg-background_alt rounded-2xl">
+                    <div className="p-2.5 bg-background_alt rounded-lg md:rounded-2xl">
                       <div className="mb-5">GPU Memory</div>
                       {gpuMemSeries.map((series) => (
                         <ThresholdBarGraph
@@ -477,7 +495,7 @@ export default function GeneralMetrics({
         </div>
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
           {statsHistory.length != 0 ? (
-            <div className="p-2.5 bg-background_alt rounded-2xl">
+            <div className="p-2.5 bg-background_alt rounded-lg md:rounded-2xl">
               <div className="mb-5">Process CPU Usage</div>
               {otherProcessCpuSeries.map((series) => (
                 <ThresholdBarGraph
@@ -495,7 +513,7 @@ export default function GeneralMetrics({
             <Skeleton className="w-full aspect-tall" />
           )}
           {statsHistory.length != 0 ? (
-            <div className="p-2.5 bg-background_alt rounded-2xl">
+            <div className="p-2.5 bg-background_alt rounded-lg md:rounded-2xl">
               <div className="mb-5">Process Memory Usage</div>
               {otherProcessMemSeries.map((series) => (
                 <ThresholdBarGraph

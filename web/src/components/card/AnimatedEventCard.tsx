@@ -3,7 +3,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { FrigateConfig } from "@/types/frigateConfig";
-import { ReviewSegment } from "@/types/review";
+import { REVIEW_PADDING, ReviewSegment } from "@/types/review";
 import { useNavigate } from "react-router-dom";
 import { RecordingStartingPoint } from "@/types/record";
 import axios from "axios";
@@ -12,6 +12,7 @@ import {
   InProgressPreview,
   VideoPreview,
 } from "../player/PreviewThumbnailPlayer";
+import { isCurrentHour } from "@/utils/dateUtil";
 
 type AnimatedEventCardProps = {
   event: ReviewSegment;
@@ -19,10 +20,14 @@ type AnimatedEventCardProps = {
 export function AnimatedEventCard({ event }: AnimatedEventCardProps) {
   const { data: config } = useSWR<FrigateConfig>("config");
 
+  const currentHour = useMemo(() => isCurrentHour(event.start_time), [event]);
+
   // preview
 
   const { data: previews } = useSWR<Preview[]>(
-    `/preview/${event.camera}/start/${Math.round(event.start_time)}/end/${Math.round(event.end_time || event.start_time + 20)}`,
+    currentHour
+      ? null
+      : `/preview/${event.camera}/start/${Math.round(event.start_time)}/end/${Math.round(event.end_time || event.start_time + 20)}`,
   );
 
   // interaction
@@ -34,7 +39,7 @@ export function AnimatedEventCard({ event }: AnimatedEventCardProps) {
         severity: event.severity,
         recording: {
           camera: event.camera,
-          startTime: event.start_time,
+          startTime: event.start_time - REVIEW_PADDING,
           severity: event.severity,
         } as RecordingStartingPoint,
       },
@@ -57,13 +62,13 @@ export function AnimatedEventCard({ event }: AnimatedEventCardProps) {
     <Tooltip>
       <TooltipTrigger asChild>
         <div
-          className="h-24 relative"
+          className="h-24 4k:h-32 relative"
           style={{
             aspectRatio: aspectRatio,
           }}
         >
           <div
-            className="size-full rounded cursor-pointer overflow-hidden"
+            className="size-full rounded md:rounded-lg cursor-pointer overflow-hidden"
             onClick={onOpenReview}
           >
             {previews ? (

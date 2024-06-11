@@ -21,10 +21,10 @@ COPY --from=rootfs / /
 ADD https://github.com/MarcA711/rknn-toolkit2/releases/download/v2.0.0/librknnrt.so /usr/lib/
 
 # TODO removed models, other models support may need to be added back in
-ADD https://github.com/MarcA711/rknn-models/releases/download/v1.5.2-rk3562/yolov8n-320x320-rk3562.rknn /models/rknn/
-ADD https://github.com/MarcA711/rknn-models/releases/download/v1.5.2-rk3566/yolov8n-320x320-rk3566.rknn /models/rknn/
-ADD https://github.com/MarcA711/rknn-models/releases/download/v1.5.2-rk3568/yolov8n-320x320-rk3568.rknn /models/rknn/
-ADD https://github.com/MarcA711/rknn-models/releases/download/v1.5.2-rk3588/yolov8n-320x320-rk3588.rknn /models/rknn/
+#ADD https://github.com/MarcA711/rknn-models/releases/download/v1.5.2-rk3562/yolov8n-320x320-rk3562.rknn /models/rknn/
+#ADD https://github.com/MarcA711/rknn-models/releases/download/v1.5.2-rk3566/yolov8n-320x320-rk3566.rknn /models/rknn/
+#ADD https://github.com/MarcA711/rknn-models/releases/download/v1.5.2-rk3568/yolov8n-320x320-rk3568.rknn /models/rknn/
+#ADD https://github.com/MarcA711/rknn-models/releases/download/v1.5.2-rk3588/yolov8n-320x320-rk3588.rknn /models/rknn/
 
 RUN rm -rf /usr/lib/btbn-ffmpeg/bin/ffmpeg
 RUN rm -rf /usr/lib/btbn-ffmpeg/bin/ffprobe

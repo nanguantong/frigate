@@ -7,6 +7,7 @@ import { MinimapBounds, Tick, Timestamp } from "./segment-metadata";
 import { useMotionSegmentUtils } from "@/hooks/use-motion-segment-utils";
 import { isDesktop, isMobile } from "react-device-detect";
 import useTapUtils from "@/hooks/use-tap-utils";
+import { cn } from "@/lib/utils";
 
 type MotionSegmentProps = {
   events: ReviewSegment[];
@@ -170,7 +171,16 @@ export function MotionSegment({
         <div
           key={segmentKey}
           data-segment-id={segmentKey}
-          className={`segment ${firstHalfSegmentWidth > 0 || secondHalfSegmentWidth > 0 ? "has-data" : ""} ${segmentClasses}  bg-gradient-to-r ${severityColorsBg[severity[0]]}`}
+          className={cn(
+            "segment",
+            {
+              "has-data":
+                firstHalfSegmentWidth > 0 || secondHalfSegmentWidth > 0,
+            },
+            segmentClasses,
+            severity[0] && "bg-gradient-to-r",
+            severity[0] && severityColorsBg[severity[0]],
+          )}
           onClick={segmentClick}
           onTouchEnd={(event) => handleTouchStart(event, segmentClick)}
         >
@@ -204,13 +214,20 @@ export function MotionSegment({
             </>
           )}
 
-          <div className="absolute left-1/2 transform -translate-x-1/2 w-[20px] md:w-[40px] h-[8px] z-10 cursor-pointer">
-            <div className="flex flex-row justify-center w-[20px] md:w-[40px] pt-[1px] mb-[1px]">
-              <div className="flex justify-center mb-[1px]">
+          <div className="absolute left-1/2 z-10 h-[8px] w-[20px] -translate-x-1/2 transform cursor-pointer md:w-[40px]">
+            <div className="mb-[1px] flex w-[20px] flex-row justify-center pt-[1px] md:w-[40px]">
+              <div className="mb-[1px] flex justify-center">
                 <div
                   key={`${segmentKey}_motion_data_1`}
                   data-motion-value={secondHalfSegmentWidth}
-                  className={`${isDesktop && animationClassesSecondHalf} h-[2px] rounded-full bg-motion_review`}
+                  className={cn(
+                    isDesktop && animationClassesSecondHalf,
+                    "h-[2px]",
+                    "rounded-full",
+                    secondHalfSegmentWidth
+                      ? "bg-motion_review"
+                      : "bg-muted-foreground",
+                  )}
                   style={{
                     width: secondHalfSegmentWidth || 1,
                   }}
@@ -218,12 +235,19 @@ export function MotionSegment({
               </div>
             </div>
 
-            <div className="flex flex-row justify-center pb-[1px] w-[20px] md:w-[40px]">
+            <div className="flex w-[20px] flex-row justify-center pb-[1px] md:w-[40px]">
               <div className="flex justify-center">
                 <div
                   key={`${segmentKey}_motion_data_2`}
                   data-motion-value={firstHalfSegmentWidth}
-                  className={`${isDesktop && animationClassesFirstHalf} h-[2px] rounded-full bg-motion_review`}
+                  className={cn(
+                    isDesktop && animationClassesFirstHalf,
+                    "h-[2px]",
+                    "rounded-full",
+                    firstHalfSegmentWidth
+                      ? "bg-motion_review"
+                      : "bg-muted-foreground",
+                  )}
                   style={{
                     width: firstHalfSegmentWidth || 1,
                   }}

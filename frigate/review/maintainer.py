@@ -68,7 +68,8 @@ class PendingReviewSegment:
         self.last_update = frame_time
 
         # thumbnail
-        self.frame = np.zeros((THUMB_HEIGHT * 3 // 2, THUMB_WIDTH), np.uint8)
+        self._frame = np.zeros((THUMB_HEIGHT * 3 // 2, THUMB_WIDTH), np.uint8)
+        self.has_frame = False
         self.frame_active_count = 0
         self.frame_path = os.path.join(
             CLIPS_DIR, f"review/thumb-{self.camera}-{self.id}.webp"
@@ -101,13 +102,27 @@ class PendingReviewSegment:
         color_frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_I420)
         color_frame = color_frame[region[1] : region[3], region[0] : region[2]]
         width = int(THUMB_HEIGHT * color_frame.shape[1] / color_frame.shape[0])
-        self.frame = cv2.resize(
+        self._frame = cv2.resize(
             color_frame, dsize=(width, THUMB_HEIGHT), interpolation=cv2.INTER_AREA
         )
 
-        if self.frame is not None:
+        if self._frame is not None:
+            self.has_frame = True
             cv2.imwrite(
-                self.frame_path, self.frame, [int(cv2.IMWRITE_WEBP_QUALITY), 60]
+                self.frame_path, self._frame, [int(cv2.IMWRITE_WEBP_QUALITY), 60]
+            )
+
+    def save_full_frame(self, camera_config: CameraConfig, frame):
+        color_frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_I420)
+        width = int(THUMB_HEIGHT * color_frame.shape[1] / color_frame.shape[0])
+        self._frame = cv2.resize(
+            color_frame, dsize=(width, THUMB_HEIGHT), interpolation=cv2.INTER_AREA
+        )
+
+        if self._frame is not None:
+            self.has_frame = True
+            cv2.imwrite(
+                self.frame_path, self._frame, [int(cv2.IMWRITE_WEBP_QUALITY), 60]
             )
 
     def get_data(self, ended: bool) -> dict:
@@ -182,7 +197,10 @@ class ReviewSegmentMaintainer(threading.Thread):
     ) -> None:
         """Update segment."""
         prev_data = segment.get_data(ended=False)
-        segment.update_frame(camera_config, frame, objects)
+
+        if frame is not None:
+            segment.update_frame(camera_config, frame, objects)
+
         new_data = segment.get_data(ended=False)
         self.requestor.send_data(UPSERT_REVIEW_SEGMENT, new_data)
         self.requestor.send_data(
@@ -270,6 +288,18 @@ class ReviewSegmentMaintainer(threading.Thread):
                 except FileNotFoundError:
                     return
         else:
+            if not segment.has_frame:
+                try:
+                    frame_id = f"{camera_config.name}{frame_time}"
+                    yuv_frame = self.frame_manager.get(
+                        frame_id, camera_config.frame_shape_yuv
+                    )
+                    segment.save_full_frame(camera_config, yuv_frame)
+                    self.frame_manager.close(frame_id)
+                    self.update_segment(segment, camera_config, None, [])
+                except FileNotFoundError:
+                    return
+
             if segment.severity == SeverityEnum.alert and frame_time > (
                 segment.last_update + THRESHOLD_ALERT_ACTIVITY
             ):
@@ -326,7 +356,7 @@ class ReviewSegmentMaintainer(threading.Thread):
                 if (
                     not severity
                     and (
-                        not camera_config.review.detections.labels
+                        camera_config.review.detections.labels is None
                         or object["label"] in (camera_config.review.detections.labels)
                     )
                     and (
@@ -411,10 +441,13 @@ class ReviewSegmentMaintainer(threading.Thread):
                 if camera not in self.indefinite_events:
                     self.indefinite_events[camera] = {}
 
-            if not self.config.cameras[camera].record.enabled:
-                continue
-
             current_segment = self.active_review_segments.get(camera)
+
+            if not self.config.cameras[camera].record.enabled:
+                if current_segment:
+                    self.update_existing_segment(current_segment, frame_time, [])
+
+                continue
 
             if current_segment is not None:
                 if topic == DetectionTypeEnum.video:
@@ -434,7 +467,7 @@ class ReviewSegmentMaintainer(threading.Thread):
                             current_segment.audio.add(audio)
                             current_segment.severity = SeverityEnum.alert
                         elif (
-                            not camera_config.review.detections.labels
+                            camera_config.review.detections.labels is None
                             or audio in camera_config.review.detections.labels
                         ):
                             current_segment.audio.add(audio)
@@ -477,7 +510,7 @@ class ReviewSegmentMaintainer(threading.Thread):
                             detections.add(audio)
                             severity = SeverityEnum.alert
                         elif (
-                            not camera_config.review.detections.labels
+                            camera_config.review.detections.labels is None
                             or audio in camera_config.review.detections.labels
                         ):
                             detections.add(audio)
@@ -511,7 +544,7 @@ class ReviewSegmentMaintainer(threading.Thread):
                             manual_info["label"]
                         )
                         # temporarily make it so this event can not end
-                        self.active_review_segments[camera] = sys.maxsize
+                        self.active_review_segments[camera].last_update = sys.maxsize
                     elif manual_info["state"] == ManualEventState.complete:
                         self.active_review_segments[camera].last_update = manual_info[
                             "end_time"
@@ -538,7 +571,7 @@ def get_active_objects(
         and (
             o["label"] in camera_config.review.alerts.labels
             or (
-                not camera_config.review.detections.labels
+                camera_config.review.detections.labels is None
                 or o["label"] in camera_config.review.detections.labels
             )
         )  # object must be in the alerts or detections label list

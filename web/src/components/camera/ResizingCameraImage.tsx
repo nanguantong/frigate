@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import ActivityIndicator from "../indicators/activity-indicator";
 import { useResizeObserver } from "@/hooks/resize-observer";
+import { cn } from "@/lib/utils";
 
 type CameraImageProps = {
   className?: string;
@@ -95,7 +96,7 @@ export default function CameraImage({
 
   return (
     <div
-      className={`relative w-full h-full flex justify-center ${className}`}
+      className={cn("relative flex h-full w-full justify-center", className)}
       ref={containerRef}
     >
       {enabled ? (
@@ -107,7 +108,7 @@ export default function CameraImage({
           width={scaledWidth}
         />
       ) : (
-        <div className="text-center pt-6">
+        <div className="pt-6 text-center">
           Camera is disabled in config, no stream or snapshot available!
         </div>
       )}

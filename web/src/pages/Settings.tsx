@@ -17,8 +17,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
-import MotionTuner from "@/components/settings/MotionTuner";
-import MasksAndZones from "@/components/settings/MasksAndZones";
 import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useOptimisticState from "@/hooks/use-optimistic-state";
@@ -26,13 +24,16 @@ import { isMobile } from "react-device-detect";
 import { FaVideo } from "react-icons/fa";
 import { CameraConfig, FrigateConfig } from "@/types/frigateConfig";
 import useSWR from "swr";
-import General from "@/components/settings/General";
 import FilterSwitch from "@/components/filter/FilterSwitch";
 import { ZoneMaskFilterButton } from "@/components/filter/ZoneMaskFilter";
 import { PolygonType } from "@/types/canvas";
-import ObjectSettings from "@/components/settings/ObjectSettings";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import scrollIntoView from "scroll-into-view-if-needed";
+import GeneralSettingsView from "@/views/settings/GeneralSettingsView";
+import ObjectSettingsView from "@/views/settings/ObjectSettingsView";
+import MotionTunerView from "@/views/settings/MotionTunerView";
+import MasksAndZonesView from "@/views/settings/MasksAndZonesView";
+import AuthenticationView from "@/views/settings/AuthenticationView";
 
 export default function Settings() {
   const settingsViews = [
@@ -40,6 +41,7 @@ export default function Settings() {
     "masks / zones",
     "motion tuner",
     "debug",
+    "users",
   ] as const;
 
   type SettingsType = (typeof settingsViews)[number];
@@ -79,12 +81,10 @@ export default function Settings() {
   );
 
   useEffect(() => {
-    if (cameras.length) {
+    if (cameras.length > 0 && selectedCamera === "") {
       setSelectedCamera(cameras[0].name);
     }
-    // only run once
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cameras, selectedCamera]);
 
   useEffect(() => {
     if (tabsRef.current) {
@@ -105,12 +105,12 @@ export default function Settings() {
   }, []);
 
   return (
-    <div className="size-full p-2 flex flex-col">
-      <div className="w-full h-11 relative flex justify-between items-center">
+    <div className="flex size-full flex-col p-2">
+      <div className="relative flex h-11 w-full items-center justify-between">
         <ScrollArea className="w-full whitespace-nowrap">
           <div ref={tabsRef} className="flex flex-row">
             <ToggleGroup
-              className="*:px-3 *:py-4 *:rounded-md"
+              className="*:rounded-md *:px-3 *:py-4"
               type="single"
               size="sm"
               value={pageToggle}
@@ -123,7 +123,7 @@ export default function Settings() {
               {Object.values(settingsViews).map((item) => (
                 <ToggleGroupItem
                   key={item}
-                  className={`flex items-center justify-between gap-2 scroll-mx-10 ${page == "general" ? "last:mr-20" : ""} ${pageToggle == item ? "" : "*:text-muted-foreground"}`}
+                  className={`flex scroll-mx-10 items-center justify-between gap-2 ${page == "general" ? "last:mr-20" : ""} ${pageToggle == item ? "" : "*:text-muted-foreground"}`}
                   value={item}
                   data-nav-item={item}
                   aria-label={`Select ${item}`}
@@ -138,7 +138,7 @@ export default function Settings() {
         {(page == "debug" ||
           page == "masks / zones" ||
           page == "motion tuner") && (
-          <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+          <div className="ml-2 flex flex-shrink-0 items-center gap-2">
             {page == "masks / zones" && (
               <ZoneMaskFilterButton
                 selectedZoneMask={filterZoneMask}
@@ -153,22 +153,25 @@ export default function Settings() {
           </div>
         )}
       </div>
-      <div className="mt-2 flex flex-col items-start w-full h-full md:h-dvh md:pb-24">
-        {page == "general" && <General />}
-        {page == "debug" && <ObjectSettings selectedCamera={selectedCamera} />}
+      <div className="mt-2 flex h-full w-full flex-col items-start md:h-dvh md:pb-24">
+        {page == "general" && <GeneralSettingsView />}
+        {page == "debug" && (
+          <ObjectSettingsView selectedCamera={selectedCamera} />
+        )}
         {page == "masks / zones" && (
-          <MasksAndZones
+          <MasksAndZonesView
             selectedCamera={selectedCamera}
             selectedZoneMask={filterZoneMask}
             setUnsavedChanges={setUnsavedChanges}
           />
         )}
         {page == "motion tuner" && (
-          <MotionTuner
+          <MotionTunerView
             selectedCamera={selectedCamera}
             setUnsavedChanges={setUnsavedChanges}
           />
         )}
+        {page == "users" && <AuthenticationView />}
       </div>
       {confirmationDialogOpen && (
         <AlertDialog
@@ -216,11 +219,11 @@ function CameraSelectButton({
 
   const trigger = (
     <Button
-      className="flex items-center gap-2 capitalize bg-selected hover:bg-selected"
+      className="flex items-center gap-2 bg-selected capitalize hover:bg-selected"
       size="sm"
     >
       <FaVideo className="text-background dark:text-primary" />
-      <div className="hidden md:block text-background dark:text-primary">
+      <div className="hidden text-background dark:text-primary md:block">
         {selectedCamera == undefined
           ? "No Camera"
           : selectedCamera.replaceAll("_", " ")}
@@ -237,7 +240,7 @@ function CameraSelectButton({
           <DropdownMenuSeparator />
         </>
       )}
-      <div className="h-auto p-4 mb-5 md:mb-1 overflow-y-auto overflow-x-hidden">
+      <div className="scrollbar-container mb-5 h-auto max-h-[80dvh] overflow-y-auto overflow-x-hidden p-4 md:mb-1">
         <div className="flex flex-col gap-2.5">
           {allCameras.map((item) => (
             <FilterSwitch
@@ -279,6 +282,7 @@ function CameraSelectButton({
 
   return (
     <DropdownMenu
+      modal={false}
       open={open}
       onOpenChange={(open: boolean) => {
         if (!open) {

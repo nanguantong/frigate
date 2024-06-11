@@ -1,5 +1,6 @@
 """configuration utils."""
 
+import asyncio
 import logging
 import os
 import shutil
@@ -8,6 +9,7 @@ from typing import Optional, Union
 from ruamel.yaml import YAML
 
 from frigate.const import CONFIG_DIR, EXPORT_DIR
+from frigate.util.services import get_video_properties
 
 logger = logging.getLogger(__name__)
 
@@ -17,16 +19,17 @@ CURRENT_CONFIG_VERSION = 0.14
 def migrate_frigate_config(config_file: str):
     """handle migrating the frigate config."""
     logger.info("Checking if frigate config needs migration...")
-    version_file = os.path.join(CONFIG_DIR, ".version")
 
-    if not os.path.isfile(version_file):
-        previous_version = 0.13
-    else:
-        with open(version_file) as f:
-            try:
-                previous_version = float(f.readline())
-            except Exception:
-                previous_version = 0.13
+    if not os.access(config_file, mode=os.W_OK):
+        logger.error("Config file is read-only, unable to migrate config file.")
+        return
+
+    yaml = YAML()
+    yaml.indent(mapping=2, sequence=4, offset=2)
+    with open(config_file, "r") as f:
+        config: dict[str, dict[str, any]] = yaml.load(f)
+
+    previous_version = config.get("version", 0.13)
 
     if previous_version == CURRENT_CONFIG_VERSION:
         logger.info("frigate config does not need migration...")
@@ -34,11 +37,6 @@ def migrate_frigate_config(config_file: str):
 
     logger.info("copying config as backup...")
     shutil.copy(config_file, os.path.join(CONFIG_DIR, "backup_config.yaml"))
-
-    yaml = YAML()
-    yaml.indent(mapping=2, sequence=4, offset=2)
-    with open(config_file, "r") as f:
-        config: dict[str, dict[str, any]] = yaml.load(f)
 
     if previous_version < 0.14:
         logger.info(f"Migrating frigate config from {previous_version} to 0.14...")
@@ -56,9 +54,6 @@ def migrate_frigate_config(config_file: str):
             os.rename(
                 os.path.join(EXPORT_DIR, file), os.path.join(EXPORT_DIR, new_name)
             )
-
-    with open(version_file, "w") as f:
-        f.write(str(CURRENT_CONFIG_VERSION))
 
     logger.info("Finished frigate config migration...")
 
@@ -92,8 +87,12 @@ def migrate_014(config: dict[str, dict[str, any]]) -> dict[str, dict[str, any]]:
         if not new_config["record"]:
             del new_config["record"]
 
-        if new_config.get("ui", {}).get("use_experimental"):
-            del new_config["ui"]["experimental"]
+        if new_config.get("ui"):
+            if new_config["ui"].get("use_experimental"):
+                del new_config["ui"]["experimental"]
+
+            if new_config["ui"].get("live_mode"):
+                del new_config["ui"]["live_mode"]
 
             if not new_config["ui"]:
                 del new_config["ui"]
@@ -141,6 +140,7 @@ def migrate_014(config: dict[str, dict[str, any]]) -> dict[str, dict[str, any]]:
 
         new_config["cameras"][name] = camera_config
 
+    new_config["version"] = 0.14
     return new_config
 
 
@@ -157,27 +157,59 @@ def get_relative_coordinates(
                 points = m.split(",")
 
                 if any(x > "1.0" for x in points):
-                    relative_masks.append(
-                        ",".join(
-                            [
-                                f"{round(int(points[i]) / frame_shape[1], 3)},{round(int(points[i + 1]) / frame_shape[0], 3)}"
-                                for i in range(0, len(points), 2)
-                            ]
+                    rel_points = []
+                    for i in range(0, len(points), 2):
+                        x = int(points[i])
+                        y = int(points[i + 1])
+
+                        if x > frame_shape[1] or y > frame_shape[0]:
+                            logger.error(
+                                f"Not applying mask due to invalid coordinates. {x},{y} is outside of the detection resolution {frame_shape[1]}x{frame_shape[0]}. Use the editor in the UI to correct the mask."
+                            )
+                            continue
+
+                        rel_points.append(
+                            f"{round(x / frame_shape[1], 3)},{round(y  / frame_shape[0], 3)}"
                         )
-                    )
+
+                    relative_masks.append(",".join(rel_points))
                 else:
                     relative_masks.append(m)
 
             mask = relative_masks
         elif isinstance(mask, str) and any(x > "1.0" for x in mask.split(",")):
             points = mask.split(",")
-            mask = ",".join(
-                [
-                    f"{round(int(points[i]) / frame_shape[1], 3)},{round(int(points[i + 1]) / frame_shape[0], 3)}"
-                    for i in range(0, len(points), 2)
-                ]
-            )
+            rel_points = []
+
+            for i in range(0, len(points), 2):
+                x = int(points[i])
+                y = int(points[i + 1])
+
+                if x > frame_shape[1] or y > frame_shape[0]:
+                    logger.error(
+                        f"Not applying mask due to invalid coordinates. {x},{y} is outside of the detection resolution {frame_shape[1]}x{frame_shape[0]}. Use the editor in the UI to correct the mask."
+                    )
+                    return []
+
+                rel_points.append(
+                    f"{round(x / frame_shape[1], 3)},{round(y  / frame_shape[0], 3)}"
+                )
+
+            mask = ",".join(rel_points)
 
         return mask
 
     return mask
+
+
+class StreamInfoRetriever:
+    def __init__(self) -> None:
+        self.stream_cache: dict[str, tuple[int, int]] = {}
+
+    def get_stream_info(self, path: str) -> str:
+        if path in self.stream_cache:
+            return self.stream_cache[path]
+
+        info = asyncio.run(get_video_properties(path))
+        self.stream_cache[path] = info
+        return info

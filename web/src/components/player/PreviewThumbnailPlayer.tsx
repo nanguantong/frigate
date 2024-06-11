@@ -24,6 +24,8 @@ import ActivityIndicator from "../indicators/activity-indicator";
 import { TimeRange } from "@/types/timeline";
 import { NoThumbSlider } from "../ui/slider";
 import { PREVIEW_FPS, PREVIEW_PADDING } from "@/types/preview";
+import { capitalizeFirstLetter } from "@/utils/stringUtil";
+import { baseUrl } from "@/api/baseUrl";
 
 type PreviewPlayerProps = {
   review: ReviewSegment;
@@ -206,7 +208,7 @@ export default function PreviewThumbnailPlayer({
       <div className={`${imgLoaded ? "visible" : "invisible"}`}>
         <img
           ref={imgRef}
-          className={`size-full transition-opacity select-none ${
+          className={`size-full select-none transition-opacity ${
             playingBack ? "opacity-0" : "opacity-100"
           }`}
           style={
@@ -233,12 +235,12 @@ export default function PreviewThumbnailPlayer({
               onMouseLeave={() => setTooltipHovering(false)}
             >
               <TooltipTrigger asChild>
-                <div className="mx-3 pb-1 text-white text-sm">
+                <div className="mx-3 pb-1 text-sm text-white">
                   {(review.severity == "alert" ||
                     review.severity == "detection") && (
                     <>
                       <Chip
-                        className={`flex items-start justify-between space-x-1 ${playingBack ? "hidden" : ""} bg-gradient-to-br ${review.has_been_reviewed ? "from-green-600 to-green-700 bg-green-600" : "from-gray-400 to-gray-500 bg-gray-500"} z-0`}
+                        className={`flex items-start justify-between space-x-1 ${playingBack ? "hidden" : ""} bg-gradient-to-br ${review.has_been_reviewed ? "bg-green-600 from-green-600 to-green-700" : "bg-gray-500 from-gray-400 to-gray-500"} z-0`}
                       >
                         {review.data.objects.sort().map((object) => {
                           return getIconForLabel(object, "size-3 text-white");
@@ -263,7 +265,7 @@ export default function PreviewThumbnailPlayer({
                 .filter(
                   (item) => item !== undefined && !item.includes("-verified"),
                 )
-                .map((text) => text.charAt(0).toUpperCase() + text.substring(1))
+                .map((text) => capitalizeFirstLetter(text))
                 .sort()
                 .join(", ")
                 .replaceAll("-verified", "")}
@@ -272,9 +274,9 @@ export default function PreviewThumbnailPlayer({
         </div>
         {!playingBack && (
           <>
-            <div className="absolute top-0 inset-x-0 rounded-t-l z-10 w-full h-[30%] bg-gradient-to-b from-black/60 to-transparent pointer-events-none"></div>
-            <div className="absolute bottom-0 inset-x-0 rounded-b-l z-10 w-full h-[20%] bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
-              <div className="flex h-full justify-between items-end mx-3 pb-1 text-white text-sm">
+            <div className="rounded-t-l pointer-events-none absolute inset-x-0 top-0 z-10 h-[30%] w-full bg-gradient-to-b from-black/60 to-transparent"></div>
+            <div className="rounded-b-l pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20%] w-full bg-gradient-to-t from-black/60 to-transparent">
+              <div className="mx-3 flex h-full items-end justify-between pb-1 text-sm text-white">
                 {review.end_time ? (
                   <TimeAgo time={review.start_time * 1000} dense />
                 ) : (
@@ -322,6 +324,7 @@ function PreviewContent({
         setIgnoreClick={setIgnoreClick}
         isPlayingBack={isPlayingBack}
         onTimeUpdate={onTimeUpdate}
+        windowVisible={true}
       />
     );
   } else if (isCurrentHour(review.start_time)) {
@@ -333,6 +336,7 @@ function PreviewContent({
         setIgnoreClick={setIgnoreClick}
         isPlayingBack={isPlayingBack}
         onTimeUpdate={onTimeUpdate}
+        windowVisible={true}
       />
     );
   }
@@ -348,6 +352,7 @@ type VideoPreviewProps = {
   setIgnoreClick: (ignore: boolean) => void;
   isPlayingBack: (ended: boolean) => void;
   onTimeUpdate?: (time: number | undefined) => void;
+  windowVisible: boolean;
 };
 export function VideoPreview({
   relevantPreview,
@@ -359,6 +364,7 @@ export function VideoPreview({
   setIgnoreClick,
   isPlayingBack,
   onTimeUpdate,
+  windowVisible,
 }: VideoPreviewProps) {
   const playerRef = useRef<HTMLVideoElement | null>(null);
   const sliderRef = useRef<HTMLDivElement | null>(null);
@@ -408,6 +414,10 @@ export function VideoPreview({
   // time progress update
 
   const onProgress = useCallback(() => {
+    if (!windowVisible) {
+      return;
+    }
+
     if (onTimeUpdate) {
       onTimeUpdate(
         relevantPreview.start + (playerRef.current?.currentTime || 0),
@@ -430,6 +440,11 @@ export function VideoPreview({
       setReviewed();
 
       if (loop && playerRef.current) {
+        if (manualPlayback) {
+          setManualPlayback(false);
+          setTimeout(() => setManualPlayback(true), 100);
+        }
+
         playerRef.current.currentTime = playerStartTime;
         return;
       }
@@ -452,7 +467,7 @@ export function VideoPreview({
 
     // we know that these deps are correct
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setProgress, lastPercent]);
+  }, [setProgress, lastPercent, windowVisible]);
 
   // manual playback
   // safari is incapable of playing at a speed > 2x
@@ -551,17 +566,20 @@ export function VideoPreview({
   );
 
   return (
-    <div className="relative size-full aspect-video bg-black">
+    <div className="relative aspect-video size-full bg-black">
       <video
         ref={playerRef}
-        className="size-full aspect-video bg-black pointer-events-none"
+        className="pointer-events-none aspect-video size-full bg-black"
         autoPlay
         playsInline
         preload="auto"
         muted
         onTimeUpdate={onProgress}
       >
-        <source src={relevantPreview.src} type={relevantPreview.type} />
+        <source
+          src={`${baseUrl}${relevantPreview.src.substring(1)}`}
+          type={relevantPreview.type}
+        />
       </video>
       {showProgress && (
         <NoThumbSlider
@@ -590,6 +608,7 @@ type InProgressPreviewProps = {
   setIgnoreClick: (ignore: boolean) => void;
   isPlayingBack: (ended: boolean) => void;
   onTimeUpdate?: (time: number | undefined) => void;
+  windowVisible: boolean;
 };
 export function InProgressPreview({
   review,
@@ -600,6 +619,7 @@ export function InProgressPreview({
   setIgnoreClick,
   isPlayingBack,
   onTimeUpdate,
+  windowVisible,
 }: InProgressPreviewProps) {
   const apiHost = useApiHost();
   const sliderRef = useRef<HTMLDivElement | null>(null);
@@ -614,7 +634,7 @@ export function InProgressPreview({
   const [key, setKey] = useState(0);
 
   const handleLoad = useCallback(() => {
-    if (!previewFrames) {
+    if (!previewFrames || !windowVisible) {
       return;
     }
 
@@ -652,7 +672,9 @@ export function InProgressPreview({
         setReviewed(review.id);
       }
 
-      setKey(key + 1);
+      if (previewFrames[key + 1]) {
+        setKey(key + 1);
+      }
     }, MIN_LOAD_TIMEOUT_MS);
 
     // we know that these deps are correct
@@ -732,9 +754,9 @@ export function InProgressPreview({
   }
 
   return (
-    <div className="relative size-full flex items-center bg-black">
+    <div className="relative flex size-full items-center bg-black">
       <img
-        className="size-full object-contain pointer-events-none"
+        className="pointer-events-none size-full object-contain"
         src={`${apiHost}api/preview/${previewFrames[key]}/thumbnail.webp`}
         onLoad={handleLoad}
       />

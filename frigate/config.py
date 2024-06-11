@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -46,9 +45,9 @@ from frigate.util.builtin import (
     get_ffmpeg_arg_list,
     load_config_with_no_duplicates,
 )
-from frigate.util.config import get_relative_coordinates
+from frigate.util.config import StreamInfoRetriever, get_relative_coordinates
 from frigate.util.image import create_mask
-from frigate.util.services import auto_detect_hwaccel, get_video_properties
+from frigate.util.services import auto_detect_hwaccel
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +71,9 @@ DEFAULT_LISTEN_AUDIO = ["bark", "fire_alarm", "scream", "speech", "yell"]
 DEFAULT_DETECTORS = {"cpu": {"type": "cpu"}}
 DEFAULT_DETECT_DIMENSIONS = {"width": 1280, "height": 720}
 DEFAULT_TIME_LAPSE_FFMPEG_ARGS = "-vf setpts=0.04*PTS -r 30"
+
+# stream info handler
+stream_info_retriever = StreamInfoRetriever()
 
 
 class FrigateBaseModel(BaseModel):
@@ -98,9 +100,6 @@ class DateTimeStyleEnum(str, Enum):
 
 
 class UIConfig(FrigateBaseModel):
-    live_mode: LiveModeEnum = Field(
-        default=LiveModeEnum.mse, title="Default Live Mode."
-    )
     timezone: Optional[str] = Field(default=None, title="Override UI timezone.")
     time_format: TimeFormatEnum = Field(
         default=TimeFormatEnum.browser, title="Override UI time format."
@@ -114,6 +113,57 @@ class UIConfig(FrigateBaseModel):
     strftime_fmt: Optional[str] = Field(
         default=None, title="Override date and time format using strftime syntax."
     )
+
+
+class TlsConfig(FrigateBaseModel):
+    enabled: bool = Field(default=True, title="Enable TLS for port 8080")
+
+
+class AuthModeEnum(str, Enum):
+    native = "native"
+    proxy = "proxy"
+
+
+class HeaderMappingConfig(FrigateBaseModel):
+    user: str = Field(
+        default=None, title="Header name from upstream proxy to identify user."
+    )
+
+
+class AuthConfig(FrigateBaseModel):
+    mode: AuthModeEnum = Field(default=AuthModeEnum.native, title="Authentication mode")
+    reset_admin_password: bool = Field(
+        default=False, title="Reset the admin password on startup"
+    )
+    cookie_name: str = Field(
+        default="frigate_token", title="Name for jwt token cookie", pattern=r"^[a-z]_*$"
+    )
+    cookie_secure: bool = Field(default=False, title="Set secure flag on cookie")
+    session_length: int = Field(
+        default=86400, title="Session length for jwt session tokens", ge=60
+    )
+    refresh_time: int = Field(
+        default=43200,
+        title="Refresh the session if it is going to expire in this many seconds",
+        ge=30,
+    )
+    header_map: HeaderMappingConfig = Field(
+        default_factory=HeaderMappingConfig,
+        title="Header mapping definitions for proxy auth mode.",
+    )
+    failed_login_rate_limit: Optional[str] = Field(
+        default=None,
+        title="Rate limits for failed login attempts.",
+    )
+    trusted_proxies: List[str] = Field(
+        default=[],
+        title="Trusted proxies for determining IP address to rate limit",
+    )
+    logout_url: Optional[str] = Field(
+        default=None, title="Redirect url for logging out in proxy mode."
+    )
+    # As of Feb 2023, OWASP recommends 600000 iterations for PBKDF2-SHA256
+    hash_iterations: int = Field(default=600000, title="Password hash iterations")
 
 
 class StatsConfig(FrigateBaseModel):
@@ -555,19 +605,24 @@ class ZoneConfig(BaseModel):
         # old native resolution coordinates
         if isinstance(coordinates, list):
             explicit = any(p.split(",")[0] > "1.0" for p in coordinates)
-            self._contour = np.array(
-                [
-                    (
-                        [int(p.split(",")[0]), int(p.split(",")[1])]
-                        if explicit
-                        else [
-                            int(float(p.split(",")[0]) * frame_shape[1]),
-                            int(float(p.split(",")[1]) * frame_shape[0]),
-                        ]
-                    )
-                    for p in coordinates
-                ]
-            )
+            try:
+                self._contour = np.array(
+                    [
+                        (
+                            [int(p.split(",")[0]), int(p.split(",")[1])]
+                            if explicit
+                            else [
+                                int(float(p.split(",")[0]) * frame_shape[1]),
+                                int(float(p.split(",")[1]) * frame_shape[0]),
+                            ]
+                        )
+                        for p in coordinates
+                    ]
+                )
+            except ValueError:
+                raise ValueError(
+                    f"Invalid coordinates found in configuration file. Coordinates must be relative (between 0-1): {coordinates}"
+                )
 
             if explicit:
                 self.coordinates = ",".join(
@@ -579,19 +634,24 @@ class ZoneConfig(BaseModel):
         elif isinstance(coordinates, str):
             points = coordinates.split(",")
             explicit = any(p > "1.0" for p in points)
-            self._contour = np.array(
-                [
-                    (
-                        [int(points[i]), int(points[i + 1])]
-                        if explicit
-                        else [
-                            int(float(points[i]) * frame_shape[1]),
-                            int(float(points[i + 1]) * frame_shape[0]),
-                        ]
-                    )
-                    for i in range(0, len(points), 2)
-                ]
-            )
+            try:
+                self._contour = np.array(
+                    [
+                        (
+                            [int(points[i]), int(points[i + 1])]
+                            if explicit
+                            else [
+                                int(float(points[i]) * frame_shape[1]),
+                                int(float(points[i + 1]) * frame_shape[0]),
+                            ]
+                        )
+                        for i in range(0, len(points), 2)
+                    ]
+                )
+            except ValueError:
+                raise ValueError(
+                    f"Invalid coordinates found in configuration file. Coordinates must be relative (between 0-1): {coordinates}"
+                )
 
             if explicit:
                 self.coordinates = ",".join(
@@ -1112,11 +1172,19 @@ class LoggerConfig(FrigateBaseModel):
 class CameraGroupConfig(FrigateBaseModel):
     """Represents a group of cameras."""
 
-    cameras: list[str] = Field(
+    cameras: Union[str, List[str]] = Field(
         default_factory=list, title="List of cameras in this group."
     )
     icon: str = Field(default="generic", title="Icon that represents camera group.")
     order: int = Field(default=0, title="Sort order for group.")
+
+    @field_validator("cameras", mode="before")
+    @classmethod
+    def validate_cameras(cls, v):
+        if isinstance(v, str) and "," not in v:
+            return [v]
+
+        return v
 
 
 def verify_config_roles(camera_config: CameraConfig) -> None:
@@ -1235,10 +1303,12 @@ def verify_motion_and_detect(camera_config: CameraConfig) -> ValueError | None:
 
 
 class FrigateConfig(FrigateBaseModel):
-    mqtt: MqttConfig = Field(title="MQTT Configuration.")
+    mqtt: MqttConfig = Field(title="MQTT configuration.")
     database: DatabaseConfig = Field(
         default_factory=DatabaseConfig, title="Database configuration."
     )
+    tls: TlsConfig = Field(default_factory=TlsConfig, title="TLS configuration.")
+    auth: AuthConfig = Field(default_factory=AuthConfig, title="Auth configuration.")
     environment_vars: Dict[str, str] = Field(
         default_factory=dict, title="Frigate environment variables."
     )
@@ -1297,6 +1367,7 @@ class FrigateConfig(FrigateBaseModel):
         default_factory=TimestampStyleConfig,
         title="Global timestamp style configuration.",
     )
+    version: Optional[float] = Field(default=None, title="Current config version.")
 
     def runtime_config(self, plus_api: PlusApi = None) -> FrigateConfig:
         """Merge camera config with globals."""
@@ -1357,7 +1428,7 @@ class FrigateConfig(FrigateBaseModel):
                 if need_detect_dimensions or need_record_fourcc:
                     stream_info = {"width": 0, "height": 0, "fourcc": None}
                     try:
-                        stream_info = asyncio.run(get_video_properties(input.path))
+                        stream_info = stream_info_retriever.get_stream_info(input.path)
                     except Exception:
                         logger.warn(
                             f"Error detecting stream parameters automatically for {input.path} Applying default values."
@@ -1383,6 +1454,12 @@ class FrigateConfig(FrigateBaseModel):
                         if stream_info.get("hevc")
                         else False
                     )
+
+            # Warn if detect fps > 10
+            if camera_config.detect.fps > 10:
+                logger.warning(
+                    f"{camera_config.name} detect fps is set to {camera_config.detect.fps}. This does NOT need to match your camera's frame rate. High values could lead to reduced performance. Recommended value is 5."
+                )
 
             # Default min_initialized configuration
             min_initialized = int(camera_config.detect.fps / 2)
@@ -1505,29 +1582,26 @@ class FrigateConfig(FrigateBaseModel):
         for key, detector in config.detectors.items():
             adapter = TypeAdapter(DetectorConfig)
             model_dict = (
-                detector if isinstance(detector, dict) else detector.model_dump()
+                detector
+                if isinstance(detector, dict)
+                else detector.model_dump(warnings="none")
             )
             detector_config: DetectorConfig = adapter.validate_python(model_dict)
             if detector_config.model is None:
-                detector_config.model = config.model
+                detector_config.model = config.model.model_copy()
             else:
-                model = detector_config.model
-                schema = ModelConfig.model_json_schema()["properties"]
-                if (
-                    model.width != schema["width"]["default"]
-                    or model.height != schema["height"]["default"]
-                    or model.labelmap_path is not None
-                    or model.labelmap
-                    or model.input_tensor != schema["input_tensor"]["default"]
-                    or model.input_pixel_format
-                    != schema["input_pixel_format"]["default"]
-                ):
+                path = detector_config.model.path
+                detector_config.model = config.model.model_copy()
+                detector_config.model.path = path
+
+                if "path" not in model_dict or len(model_dict.keys()) > 1:
                     logger.warning(
                         "Customizing more than a detector model path is unsupported."
                     )
+
             merged_model = deep_merge(
-                detector_config.model.model_dump(exclude_unset=True),
-                config.model.model_dump(exclude_unset=True),
+                detector_config.model.model_dump(exclude_unset=True, warnings="none"),
+                config.model.model_dump(exclude_unset=True, warnings="none"),
             )
 
             if "path" not in merged_model:

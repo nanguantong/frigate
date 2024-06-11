@@ -10,6 +10,8 @@ import HlsVideoPlayer from "../HlsVideoPlayer";
 import { TimeRange } from "@/types/timeline";
 import ActivityIndicator from "@/components/indicators/activity-indicator";
 import { VideoResolutionType } from "@/types/live";
+import axios from "axios";
+import { cn } from "@/lib/utils";
 
 /**
  * Dynamically switches between video playback and scrubbing preview player.
@@ -22,10 +24,12 @@ type DynamicVideoPlayerProps = {
   startTimestamp?: number;
   isScrubbing: boolean;
   hotKeys: boolean;
+  fullscreen: boolean;
   onControllerReady: (controller: DynamicVideoController) => void;
   onTimestampUpdate?: (timestamp: number) => void;
   onClipEnded?: () => void;
   setFullResolution: React.Dispatch<React.SetStateAction<VideoResolutionType>>;
+  toggleFullscreen: () => void;
 };
 export default function DynamicVideoPlayer({
   className,
@@ -35,10 +39,12 @@ export default function DynamicVideoPlayer({
   startTimestamp,
   isScrubbing,
   hotKeys,
+  fullscreen,
   onControllerReady,
   onTimestampUpdate,
   onClipEnded,
   setFullResolution,
+  toggleFullscreen,
 }: DynamicVideoPlayerProps) {
   const apiHost = useApiHost();
   const { data: config } = useSWR<FrigateConfig>("config");
@@ -127,14 +133,27 @@ export default function DynamicVideoPlayer({
     [controller, onTimestampUpdate, isScrubbing, isLoading],
   );
 
+  const onUploadFrameToPlus = useCallback(
+    (playTime: number) => {
+      if (!controller) {
+        return;
+      }
+
+      const time = controller.getProgress(playTime);
+      return axios.post(`/${camera}/plus/${time}`);
+    },
+    [camera, controller],
+  );
+
   // state of playback player
 
-  const recordingParams = useMemo(() => {
-    return {
+  const recordingParams = useMemo(
+    () => ({
       before: timeRange.before,
       after: timeRange.after,
-    };
-  }, [timeRange]);
+    }),
+    [timeRange],
+  );
   const { data: recordings } = useSWR<Recording[]>(
     [`${camera}/recordings`, recordingParams],
     { revalidateOnFocus: false },
@@ -150,7 +169,7 @@ export default function DynamicVideoPlayer({
     }
 
     setSource(
-      `${apiHost}vod/${camera}/start/${timeRange.after}/end/${timeRange.before}/master.m3u8`,
+      `${apiHost}vod/${camera}/start/${recordingParams.after}/end/${recordingParams.before}/master.m3u8`,
     );
     setLoadingTimeout(setTimeout(() => setIsLoading(true), 1000));
 
@@ -170,6 +189,7 @@ export default function DynamicVideoPlayer({
         visible={!(isScrubbing || isLoading)}
         currentSource={source}
         hotKeys={hotKeys}
+        fullscreen={fullscreen}
         onTimeUpdate={onTimeUpdate}
         onPlayerLoaded={onPlayerLoaded}
         onClipEnded={onClipEnded}
@@ -186,9 +206,14 @@ export default function DynamicVideoPlayer({
           setNoRecording(false);
         }}
         setFullResolution={setFullResolution}
+        onUploadFrame={onUploadFrameToPlus}
+        toggleFullscreen={toggleFullscreen}
       />
       <PreviewPlayer
-        className={`${isScrubbing || isLoading ? "visible" : "hidden"} ${className}`}
+        className={cn(
+          className,
+          isScrubbing || isLoading ? "visible" : "hidden",
+        )}
         camera={camera}
         timeRange={timeRange}
         cameraPreviews={cameraPreviews}
@@ -198,7 +223,7 @@ export default function DynamicVideoPlayer({
           setPreviewController(previewController);
         }}
       />
-      {isLoading && !noRecording && (
+      {!isScrubbing && isLoading && !noRecording && (
         <ActivityIndicator className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
       )}
       {!isScrubbing && noRecording && (

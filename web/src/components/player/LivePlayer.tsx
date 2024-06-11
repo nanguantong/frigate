@@ -8,14 +8,20 @@ import JSMpegPlayer from "./JSMpegPlayer";
 import { MdCircle } from "react-icons/md";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { useCameraActivity } from "@/hooks/use-camera-activity";
-import { LivePlayerMode, VideoResolutionType } from "@/types/live";
+import {
+  LivePlayerError,
+  LivePlayerMode,
+  VideoResolutionType,
+} from "@/types/live";
 import useCameraLiveMode from "@/hooks/use-camera-live-mode";
 import { getIconForLabel } from "@/utils/iconUtil";
 import Chip from "../indicators/Chip";
 import { capitalizeFirstLetter } from "@/utils/stringUtil";
+import { cn } from "@/lib/utils";
 
 type LivePlayerProps = {
   cameraRef?: (ref: HTMLDivElement | null) => void;
+  containerRef?: React.MutableRefObject<HTMLDivElement | null>;
   className?: string;
   cameraConfig: CameraConfig;
   preferredLiveMode?: LivePlayerMode;
@@ -25,12 +31,15 @@ type LivePlayerProps = {
   micEnabled?: boolean; // only webrtc supports mic
   iOSCompatFullScreen?: boolean;
   pip?: boolean;
+  autoLive?: boolean;
   onClick?: () => void;
   setFullResolution?: React.Dispatch<React.SetStateAction<VideoResolutionType>>;
+  onError?: (error: LivePlayerError) => void;
 };
 
 export default function LivePlayer({
   cameraRef = undefined,
+  containerRef,
   className,
   cameraConfig,
   preferredLiveMode,
@@ -40,12 +49,14 @@ export default function LivePlayer({
   micEnabled = false,
   iOSCompatFullScreen = false,
   pip,
+  autoLive = true,
   onClick,
   setFullResolution,
+  onError,
 }: LivePlayerProps) {
   // camera activity
 
-  const { activeMotion, activeTracking, objects } =
+  const { activeMotion, activeTracking, objects, offline } =
     useCameraActivity(cameraConfig);
 
   const cameraActive = useMemo(
@@ -61,6 +72,10 @@ export default function LivePlayer({
 
   const [liveReady, setLiveReady] = useState(false);
   useEffect(() => {
+    if (!autoLive) {
+      return;
+    }
+
     if (!liveReady) {
       if (cameraActive && liveMode == "jsmpeg") {
         setLiveReady(true);
@@ -74,12 +89,12 @@ export default function LivePlayer({
     }
     // live mode won't change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraActive, liveReady]);
+  }, [autoLive, cameraActive, liveReady]);
 
   // camera still state
 
   const stillReloadInterval = useMemo(() => {
-    if (!windowVisible) {
+    if (!windowVisible || offline) {
       return -1; // no reason to update the image when the window is not visible
     }
 
@@ -87,22 +102,35 @@ export default function LivePlayer({
       return 60000;
     }
 
-    if (cameraActive) {
-      return 200;
+    if (activeMotion || activeTracking) {
+      if (autoLive) {
+        return 200;
+      } else {
+        return 59000;
+      }
     }
 
     return 30000;
-  }, [liveReady, cameraActive, windowVisible]);
+  }, [
+    autoLive,
+    liveReady,
+    activeMotion,
+    activeTracking,
+    offline,
+    windowVisible,
+  ]);
 
   if (!cameraConfig) {
     return <ActivityIndicator />;
   }
 
   let player;
-  if (liveMode == "webrtc") {
+  if (!autoLive) {
+    player = null;
+  } else if (liveMode == "webrtc") {
     player = (
       <WebRtcPlayer
-        className={`rounded-lg md:rounded-2xl size-full ${liveReady ? "" : "hidden"}`}
+        className={`size-full rounded-lg md:rounded-2xl ${liveReady ? "" : "hidden"}`}
         camera={cameraConfig.live.stream_name}
         playbackEnabled={cameraActive}
         audioEnabled={playAudio}
@@ -110,19 +138,21 @@ export default function LivePlayer({
         iOSCompatFullScreen={iOSCompatFullScreen}
         onPlaying={() => setLiveReady(true)}
         pip={pip}
+        onError={onError}
       />
     );
   } else if (liveMode == "mse") {
     if ("MediaSource" in window || "ManagedMediaSource" in window) {
       player = (
         <MSEPlayer
-          className={`rounded-lg md:rounded-2xl size-full ${liveReady ? "" : "hidden"}`}
+          className={`size-full rounded-lg md:rounded-2xl ${liveReady ? "" : "hidden"}`}
           camera={cameraConfig.live.stream_name}
           playbackEnabled={cameraActive}
           audioEnabled={playAudio}
           onPlaying={() => setLiveReady(true)}
           pip={pip}
           setFullResolution={setFullResolution}
+          onError={onError}
         />
       );
     } else {
@@ -134,14 +164,19 @@ export default function LivePlayer({
       );
     }
   } else if (liveMode == "jsmpeg") {
-    player = (
-      <JSMpegPlayer
-        className="size-full flex justify-center rounded-lg md:rounded-2xl overflow-hidden"
-        camera={cameraConfig.live.stream_name}
-        width={cameraConfig.detect.width}
-        height={cameraConfig.detect.height}
-      />
-    );
+    if (cameraActive || !showStillWithoutActivity) {
+      player = (
+        <JSMpegPlayer
+          className="flex justify-center overflow-hidden rounded-lg md:rounded-2xl"
+          camera={cameraConfig.live.stream_name}
+          width={cameraConfig.detect.width}
+          height={cameraConfig.detect.height}
+          containerRef={containerRef}
+        />
+      );
+    } else {
+      player = null;
+    }
   } else {
     player = <ActivityIndicator />;
   }
@@ -150,15 +185,18 @@ export default function LivePlayer({
     <div
       ref={cameraRef}
       data-camera={cameraConfig.name}
-      className={`relative flex justify-center ${liveMode == "jsmpeg" ? "size-full" : "w-full"} outline cursor-pointer ${
+      className={cn(
+        "relative flex w-full cursor-pointer justify-center outline",
         activeTracking
-          ? "outline-severity_alert outline-3 rounded-lg md:rounded-2xl shadow-severity_alert"
-          : "outline-0 outline-background"
-      } transition-all duration-500 ${className}`}
+          ? "outline-3 rounded-lg shadow-severity_alert outline-severity_alert md:rounded-2xl"
+          : "outline-0 outline-background",
+        "transition-all duration-500",
+        className,
+      )}
       onClick={onClick}
     >
-      <div className="absolute top-0 inset-x-0 rounded-lg md:rounded-2xl z-10 w-full h-[30%] bg-gradient-to-b from-black/20 to-transparent pointer-events-none"></div>
-      <div className="absolute bottom-0 inset-x-0 rounded-lg md:rounded-2xl z-10 w-full h-[10%] bg-gradient-to-t from-black/20 to-transparent pointer-events-none"></div>
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30%] w-full rounded-lg bg-gradient-to-b from-black/20 to-transparent md:rounded-2xl"></div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[10%] w-full rounded-lg bg-gradient-to-t from-black/20 to-transparent md:rounded-2xl"></div>
       {player}
 
       {objects.length > 0 && (
@@ -166,9 +204,9 @@ export default function LivePlayer({
           <Tooltip>
             <div className="flex">
               <TooltipTrigger asChild>
-                <div className="mx-3 pb-1 text-white text-sm">
+                <div className="mx-3 pb-1 text-sm text-white">
                   <Chip
-                    className={`flex items-start justify-between space-x-1 bg-gradient-to-br from-gray-400 to-gray-500 bg-gray-500 z-0`}
+                    className={`z-0 flex items-start justify-between space-x-1 bg-gray-500 bg-gradient-to-br from-gray-400 to-gray-500`}
                   >
                     {[
                       ...new Set([
@@ -184,7 +222,13 @@ export default function LivePlayer({
               </TooltipTrigger>
             </div>
             <TooltipContent className="capitalize">
-              {[...new Set([...(objects || []).map(({ label }) => label)])]
+              {[
+                ...new Set([
+                  ...(objects || []).map(({ label, sub_label }) =>
+                    label.endsWith("verified") ? sub_label : label,
+                  ),
+                ]),
+              ]
                 .filter(
                   (label) =>
                     label !== undefined && !label.includes("-verified"),
@@ -212,9 +256,16 @@ export default function LivePlayer({
         />
       </div>
 
-      <div className="absolute right-2 top-2 size-4">
-        {activeMotion && (
-          <MdCircle className="size-2 drop-shadow-md shadow-danger text-danger animate-pulse" />
+      <div className="absolute right-2 top-2">
+        {autoLive && !offline && activeMotion && (
+          <MdCircle className="mr-2 size-2 animate-pulse text-danger shadow-danger drop-shadow-md" />
+        )}
+        {offline && (
+          <Chip
+            className={`z-0 flex items-start justify-between space-x-1 bg-gray-500 bg-gradient-to-br from-gray-400 to-gray-500 text-xs capitalize`}
+          >
+            {cameraConfig.name.replaceAll("_", " ")}
+          </Chip>
         )}
       </div>
     </div>

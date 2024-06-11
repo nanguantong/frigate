@@ -1,5 +1,5 @@
 import { baseUrl } from "@/api/baseUrl";
-import { VideoResolutionType } from "@/types/live";
+import { LivePlayerError, VideoResolutionType } from "@/types/live";
 import {
   SetStateAction,
   useCallback,
@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { isIOS, isSafari } from "react-device-detect";
 
 type MSEPlayerProps = {
   camera: string;
@@ -17,6 +18,7 @@ type MSEPlayerProps = {
   pip?: boolean;
   onPlaying?: () => void;
   setFullResolution?: React.Dispatch<SetStateAction<VideoResolutionType>>;
+  onError?: (error: LivePlayerError) => void;
 };
 
 function MSEPlayer({
@@ -27,9 +29,8 @@ function MSEPlayer({
   pip = false,
   onPlaying,
   setFullResolution,
+  onError,
 }: MSEPlayerProps) {
-  let connectTS: number = 0;
-
   const RECONNECT_TIMEOUT: number = 30000;
 
   const CODECS: string[] = [
@@ -46,6 +47,8 @@ function MSEPlayer({
   const visibilityCheck: boolean = !pip;
 
   const [wsState, setWsState] = useState<number>(WebSocket.CLOSED);
+  const [connectTS, setConnectTS] = useState<number>(0);
+  const [bufferTimeout, setBufferTimeout] = useState<NodeJS.Timeout>();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -103,14 +106,14 @@ function MSEPlayer({
 
     setWsState(WebSocket.CONNECTING);
 
-    // TODO may need to check this later
-    // eslint-disable-next-line
-    connectTS = Date.now();
+    setConnectTS(Date.now());
 
     wsRef.current = new WebSocket(wsURL);
     wsRef.current.binaryType = "arraybuffer";
-    wsRef.current.addEventListener("open", () => onOpen());
-    wsRef.current.addEventListener("close", () => onClose());
+    wsRef.current.addEventListener("open", onOpen);
+    wsRef.current.addEventListener("close", onClose);
+    // we know that these deps are correct
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsURL]);
 
   const onDisconnect = useCallback(() => {
@@ -121,7 +124,7 @@ function MSEPlayer({
     }
   }, []);
 
-  const onOpen = useCallback(() => {
+  const onOpen = () => {
     setWsState(WebSocket.OPEN);
 
     wsRef.current?.addEventListener("message", (ev) => {
@@ -139,23 +142,25 @@ function MSEPlayer({
     onmessageRef.current = {};
 
     onMse();
-    // only run once
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  };
 
-  const onClose = useCallback(() => {
-    if (wsState === WebSocket.CLOSED) return;
-
+  const reconnect = (timeout?: number) => {
     setWsState(WebSocket.CONNECTING);
     wsRef.current = null;
 
-    const delay = Math.max(RECONNECT_TIMEOUT - (Date.now() - connectTS), 0);
+    const delay =
+      timeout ?? Math.max(RECONNECT_TIMEOUT - (Date.now() - connectTS), 0);
 
     reconnectTIDRef.current = window.setTimeout(() => {
       reconnectTIDRef.current = null;
       onConnect();
     }, delay);
-  }, [wsState, connectTS, onConnect]);
+  };
+
+  const onClose = () => {
+    if (wsState === WebSocket.CLOSED) return;
+    reconnect();
+  };
 
   const onMse = () => {
     if ("ManagedMediaSource" in window) {
@@ -302,9 +307,56 @@ function MSEPlayer({
       className={className}
       playsInline
       preload="auto"
-      onLoadedData={onPlaying}
-      onLoadedMetadata={handleLoadedMetadata}
+      onLoadedData={() => {
+        handleLoadedMetadata?.();
+        onPlaying?.();
+      }}
       muted={!audioEnabled}
+      onProgress={() => {
+        if (isSafari || isIOS) {
+          onPlaying?.();
+        }
+        if (onError != undefined) {
+          if (videoRef.current?.paused) {
+            return;
+          }
+
+          if (bufferTimeout) {
+            clearTimeout(bufferTimeout);
+            setBufferTimeout(undefined);
+          }
+
+          setBufferTimeout(
+            setTimeout(() => {
+              onError("stalled");
+            }, 3000),
+          );
+        }
+      }}
+      onError={(e) => {
+        if (
+          // @ts-expect-error code does exist
+          e.target.error.code == MediaError.MEDIA_ERR_NETWORK
+        ) {
+          onError?.("startup");
+        }
+
+        if (
+          // @ts-expect-error code does exist
+          e.target.error.code == MediaError.MEDIA_ERR_DECODE &&
+          (isSafari || isIOS)
+        ) {
+          onError?.("mse-decode");
+          clearTimeout(bufferTimeout);
+          setBufferTimeout(undefined);
+        }
+
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+          reconnect(5000);
+        }
+      }}
     />
   );
 }

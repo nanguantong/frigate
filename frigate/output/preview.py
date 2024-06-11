@@ -5,6 +5,7 @@ import logging
 import os
 import subprocess as sp
 import threading
+import time
 from pathlib import Path
 
 import cv2
@@ -77,7 +78,7 @@ class FFMpegConverter(threading.Thread):
         self.ffmpeg_cmd = parse_preset_hardware_acceleration_encode(
             config.ffmpeg.hwaccel_args,
             input="-f concat -y -protocol_whitelist pipe,file -safe 0 -i /dev/stdin",
-            output=f"-g {PREVIEW_KEYFRAME_INTERVAL} -fpsmax 2 -bf 0 -b:v {PREVIEW_QUALITY_BIT_RATES[self.config.record.preview.quality]} {FPS_VFR_PARAM} -movflags +faststart -pix_fmt yuv420p {self.path}",
+            output=f"-g {PREVIEW_KEYFRAME_INTERVAL} -bf 0 -b:v {PREVIEW_QUALITY_BIT_RATES[self.config.record.preview.quality]} {FPS_VFR_PARAM} -movflags +faststart -pix_fmt yuv420p {self.path}",
             type=EncodeTypeEnum.preview,
         )
 
@@ -101,12 +102,24 @@ class FFMpegConverter(threading.Thread):
                 f"duration {self.frame_times[t_idx + 1] - self.frame_times[t_idx]}"
             )
 
-        p = sp.run(
-            self.ffmpeg_cmd.split(" "),
-            input="\n".join(playlist),
-            encoding="ascii",
-            capture_output=True,
-        )
+        try:
+            p = sp.run(
+                self.ffmpeg_cmd.split(" "),
+                input="\n".join(playlist),
+                encoding="ascii",
+                capture_output=True,
+            )
+        except BlockingIOError:
+            logger.warning(
+                f"Failed to create preview for {self.config.name}, retrying..."
+            )
+            time.sleep(2)
+            p = sp.run(
+                self.ffmpeg_cmd.split(" "),
+                input="\n".join(playlist),
+                encoding="ascii",
+                capture_output=True,
+            )
 
         start = self.frame_times[0]
         end = self.frame_times[-1]
@@ -167,6 +180,7 @@ class PreviewRecorder:
         # end segment at end of hour
         self.segment_end = (
             (datetime.datetime.now() + datetime.timedelta(hours=1))
+            .astimezone(datetime.timezone.utc)
             .replace(minute=0, second=0, microsecond=0)
             .timestamp()
         )
@@ -179,6 +193,7 @@ class PreviewRecorder:
         # check for existing items in cache
         start_ts = (
             datetime.datetime.now()
+            .astimezone(datetime.timezone.utc)
             .replace(minute=0, second=0, microsecond=0)
             .timestamp()
         )
@@ -194,7 +209,12 @@ class PreviewRecorder:
                 os.unlink(os.path.join(PREVIEW_CACHE_DIR, file))
                 continue
 
-            ts = float(file.split("-")[1][: -(len(PREVIEW_FRAME_TYPE) + 1)])
+            file_time = file.split("-")[1][: -(len(PREVIEW_FRAME_TYPE) + 1)]
+
+            if not file_time:
+                continue
+
+            ts = float(file_time)
 
             if self.start_time == 0:
                 self.start_time = ts
@@ -287,6 +307,7 @@ class PreviewRecorder:
             # reset frame cache
             self.segment_end = (
                 (datetime.datetime.now() + datetime.timedelta(hours=1))
+                .astimezone(datetime.timezone.utc)
                 .replace(minute=0, second=0, microsecond=0)
                 .timestamp()
             )

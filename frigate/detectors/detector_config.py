@@ -30,8 +30,9 @@ class InputTensorEnum(str, Enum):
 class ModelTypeEnum(str, Enum):
     ssd = "ssd"
     yolox = "yolox"
-    yolov5 = "yolov5"
-    yolov8 = "yolov8"
+    yolonas = "yolonas"
+    #yolov5 = "yolov5"
+    #yolov8 = "yolov8"
 
 
 class ModelConfig(BaseModel):

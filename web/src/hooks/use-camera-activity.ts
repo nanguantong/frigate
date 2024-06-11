@@ -10,21 +10,27 @@ import { useTimelineUtils } from "./use-timeline-utils";
 import { ObjectType } from "@/types/ws";
 import useDeepMemo from "./use-deep-memo";
 import { isEqual } from "lodash";
+import { useAutoFrigateStats } from "./use-stats";
 
 type useCameraActivityReturn = {
   activeTracking: boolean;
   activeMotion: boolean;
   objects: ObjectType[];
+  offline: boolean;
 };
 
 export function useCameraActivity(
   camera: CameraConfig,
+  revalidateOnFocus: boolean = true,
 ): useCameraActivityReturn {
   const [objects, setObjects] = useState<ObjectType[]>([]);
 
   // init camera activity
 
-  const { payload: initialCameraState } = useInitialCameraState(camera.name);
+  const { payload: initialCameraState } = useInitialCameraState(
+    camera.name,
+    revalidateOnFocus,
+  );
 
   const updatedCameraState = useDeepMemo(initialCameraState);
 
@@ -112,12 +118,31 @@ export function useCameraActivity(
     handleSetObjects(newObjects);
   }, [camera, updatedEvent, objects, handleSetObjects]);
 
+  // determine if camera is offline
+
+  const stats = useAutoFrigateStats();
+
+  const offline = useMemo(() => {
+    if (!stats) {
+      return false;
+    }
+
+    const cameras = stats["cameras"];
+
+    if (!cameras) {
+      return false;
+    }
+
+    return cameras[camera.name].camera_fps == 0;
+  }, [camera, stats]);
+
   return {
     activeTracking: hasActiveObjects,
     activeMotion: detectingMotion
       ? detectingMotion === "ON"
       : initialCameraState?.motion === true,
     objects,
+    offline,
   };
 }
 

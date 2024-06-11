@@ -41,7 +41,7 @@ export default function PolygonEditControls({
           ...activePolygon.pointsOrder.slice(0, lastPointOrderIndex),
           ...activePolygon.pointsOrder.slice(lastPointOrderIndex + 1),
         ],
-        isFinished: false,
+        isFinished: activePolygon.isFinished && activePolygon.points.length > 3,
       };
 
       setPolygons(updatedPolygons);
@@ -73,7 +73,7 @@ export default function PolygonEditControls({
         <TooltipTrigger asChild>
           <Button
             variant="default"
-            className="size-6 p-1 rounded-md"
+            className="size-6 rounded-md p-1"
             disabled={!polygons[activePolygonIndex].points.length}
             onClick={undo}
           >
@@ -86,7 +86,7 @@ export default function PolygonEditControls({
         <TooltipTrigger asChild>
           <Button
             variant="default"
-            className="size-6 p-1 rounded-md"
+            className="size-6 rounded-md p-1"
             disabled={!polygons[activePolygonIndex].points.length}
             onClick={reset}
           >

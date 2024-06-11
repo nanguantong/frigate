@@ -26,7 +26,7 @@ import {
   toRGBColorString,
 } from "@/utils/canvasUtil";
 import { Polygon, PolygonType } from "@/types/canvas";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useContext, useMemo, useState } from "react";
 import axios from "axios";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
@@ -34,6 +34,7 @@ import useSWR from "swr";
 import { FrigateConfig } from "@/types/frigateConfig";
 import { reviewQueries } from "@/utils/zoneEdutUtil";
 import IconWrapper from "../ui/icon-wrapper";
+import { StatusBarMessagesContext } from "@/context/statusbar-provider";
 
 type PolygonItemProps = {
   polygon: Polygon;
@@ -57,6 +58,7 @@ export default function PolygonItem({
   const { data: config, mutate: updateConfig } =
     useSWR<FrigateConfig>("config");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const { addMessage } = useContext(StatusBarMessagesContext)!;
   const [isLoading, setIsLoading] = useState(false);
 
   const cameraConfig = useMemo(() => {
@@ -198,15 +200,21 @@ export default function PolygonItem({
   const handleDelete = () => {
     setActivePolygonIndex(undefined);
     saveToConfig(polygon);
+    addMessage(
+      "masks_zones",
+      "Restart required (masks/zones changed)",
+      undefined,
+      "masks_zones",
+    );
   };
 
   return (
     <>
-      <Toaster position="top-center" />
+      <Toaster position="top-center" closeButton={true} />
 
       <div
         key={index}
-        className="flex p-1 rounded-lg flex-row items-center justify-between mx-2 my-1.5 transition-background duration-100"
+        className="transition-background my-1.5 flex flex-row items-center justify-between rounded-lg p-1 duration-100"
         data-index={index}
         onMouseEnter={() => setHoveredPolygonIndex(index)}
         onMouseLeave={() => setHoveredPolygonIndex(null)}
@@ -226,7 +234,7 @@ export default function PolygonItem({
         >
           {PolygonItemIcon && (
             <PolygonItemIcon
-              className="size-5 mr-2"
+              className="mr-2 size-5"
               style={{
                 fill: toRGBColorString(polygon.color, true),
                 color: toRGBColorString(polygon.color, true),
@@ -258,7 +266,7 @@ export default function PolygonItem({
 
         {isMobile && (
           <>
-            <DropdownMenu>
+            <DropdownMenu modal={false}>
               <DropdownMenuTrigger>
                 <HiOutlineDotsVertical className="size-5" />
               </DropdownMenuTrigger>
@@ -285,7 +293,7 @@ export default function PolygonItem({
           </>
         )}
         {!isMobile && hoveredPolygonIndex === index && (
-          <div className="flex flex-row gap-2 items-center">
+          <div className="flex flex-row items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
                 <IconWrapper
@@ -319,7 +327,7 @@ export default function PolygonItem({
                   icon={HiTrash}
                   className={`size-[15px] cursor-pointer ${
                     hoveredPolygonIndex === index &&
-                    "text-primary-variant fill-primary-variant"
+                    "fill-primary-variant text-primary-variant"
                   }`}
                   onClick={() => !isLoading && setDeleteDialogOpen(true)}
                 />

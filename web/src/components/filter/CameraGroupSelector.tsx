@@ -1,8 +1,4 @@
-import {
-  CameraGroupConfig,
-  FrigateConfig,
-  GROUP_ICONS,
-} from "@/types/frigateConfig";
+import { CameraGroupConfig, FrigateConfig } from "@/types/frigateConfig";
 import { isDesktop, isMobile } from "react-device-detect";
 import useSWR from "swr";
 import { MdHome } from "react-icons/md";
@@ -10,7 +6,6 @@ import { usePersistedOverlayState } from "@/hooks/use-overlay-state";
 import { Button } from "../ui/button";
 import { useCallback, useMemo, useState } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
-import { getIconForGroup } from "@/utils/iconUtil";
 import { LuPencil, LuPlus } from "react-icons/lu";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Drawer, DrawerContent } from "../ui/drawer";
@@ -32,13 +27,6 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -59,6 +47,12 @@ import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import ActivityIndicator from "../indicators/activity-indicator";
 import { ScrollArea, ScrollBar } from "../ui/scroll-area";
+import { usePersistence } from "@/hooks/use-persistence";
+import { TooltipPortal } from "@radix-ui/react-tooltip";
+import { cn } from "@/lib/utils";
+import * as LuIcons from "react-icons/lu";
+import IconPicker, { IconName, IconRenderer } from "../icons/IconPicker";
+import { isValidIconName } from "@/utils/iconUtil";
 
 type CameraGroupSelectorProps = {
   className?: string;
@@ -87,7 +81,7 @@ export function CameraGroupSelector({ className }: CameraGroupSelectorProps) {
 
   // groups
 
-  const [group, setGroup] = usePersistedOverlayState(
+  const [group, setGroup, deleteGroup] = usePersistedOverlayState(
     "cameraGroup",
     "default" as string,
   );
@@ -116,18 +110,23 @@ export function CameraGroupSelector({ className }: CameraGroupSelectorProps) {
         currentGroups={groups}
         activeGroup={group}
         setGroup={setGroup}
+        deleteGroup={deleteGroup}
       />
       <Scroller className={`${isMobile ? "whitespace-nowrap" : ""}`}>
         <div
-          className={`flex items-center justify-start gap-2 ${className ?? ""} ${isDesktop ? "flex-col" : "whitespace-nowrap"}`}
+          className={cn(
+            "flex items-center justify-start gap-2",
+            className,
+            isDesktop ? "flex-col" : "whitespace-nowrap",
+          )}
         >
           <Tooltip open={tooltip == "default"}>
             <TooltipTrigger asChild>
               <Button
                 className={
                   group == "default"
-                    ? "text-selected bg-blue-900 focus:bg-blue-900 bg-opacity-60 focus:bg-opacity-60"
-                    : "text-secondary-foreground bg-secondary focus:text-secondary-foreground focus:bg-secondary"
+                    ? "bg-blue-900 bg-opacity-60 text-selected focus:bg-blue-900 focus:bg-opacity-60"
+                    : "bg-secondary text-secondary-foreground focus:bg-secondary focus:text-secondary-foreground"
                 }
                 size="xs"
                 onClick={() => (group ? setGroup("default", true) : null)}
@@ -137,9 +136,11 @@ export function CameraGroupSelector({ className }: CameraGroupSelectorProps) {
                 <MdHome className="size-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent className="capitalize" side="right">
-              All Cameras
-            </TooltipContent>
+            <TooltipPortal>
+              <TooltipContent className="capitalize" side="right">
+                All Cameras
+              </TooltipContent>
+            </TooltipPortal>
           </Tooltip>
           {groups.map(([name, config]) => {
             return (
@@ -148,8 +149,8 @@ export function CameraGroupSelector({ className }: CameraGroupSelectorProps) {
                   <Button
                     className={
                       group == name
-                        ? "text-selected bg-blue-900 focus:bg-blue-900 bg-opacity-60 focus:bg-opacity-60"
-                        : "text-secondary-foreground bg-secondary"
+                        ? "bg-blue-900 bg-opacity-60 text-selected focus:bg-blue-900 focus:bg-opacity-60"
+                        : "bg-secondary text-secondary-foreground"
                     }
                     size="xs"
                     onClick={() => setGroup(name, group != "default")}
@@ -158,18 +159,25 @@ export function CameraGroupSelector({ className }: CameraGroupSelectorProps) {
                       isDesktop ? showTooltip(undefined) : null
                     }
                   >
-                    {getIconForGroup(config.icon)}
+                    {config && config.icon && isValidIconName(config.icon) && (
+                      <IconRenderer
+                        icon={LuIcons[config.icon]}
+                        className="size-4"
+                      />
+                    )}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent className="capitalize" side="right">
-                  {name}
-                </TooltipContent>
+                <TooltipPortal>
+                  <TooltipContent className="capitalize" side="right">
+                    {name}
+                  </TooltipContent>
+                </TooltipPortal>
               </Tooltip>
             );
           })}
 
           <Button
-            className="text-muted-foreground bg-secondary"
+            className="bg-secondary text-muted-foreground"
             size="xs"
             onClick={() => setAddGroup(true)}
           >
@@ -188,6 +196,7 @@ type NewGroupDialogProps = {
   currentGroups: [string, CameraGroupConfig][];
   activeGroup?: string;
   setGroup: (value: string | undefined, replace?: boolean | undefined) => void;
+  deleteGroup: () => void;
 };
 function NewGroupDialog({
   open,
@@ -195,6 +204,7 @@ function NewGroupDialog({
   currentGroups,
   activeGroup,
   setGroup,
+  deleteGroup,
 }: NewGroupDialogProps) {
   const { mutate: updateConfig } = useSWR<FrigateConfig>("config");
 
@@ -215,11 +225,16 @@ function NewGroupDialog({
   const [editState, setEditState] = useState<"none" | "add" | "edit">("none");
   const [isLoading, setIsLoading] = useState(false);
 
+  const [, , , deleteGridLayout] = usePersistence(
+    `${activeGroup}-draggable-layout`,
+  );
+
   // callbacks
 
   const onDeleteGroup = useCallback(
     async (name: string) => {
-      // TODO: reset order on groups when deleting
+      deleteGridLayout();
+      deleteGroup();
 
       await axios
         .put(`config/set?camera_groups.${name}`, { requires_restart: 0 })
@@ -250,7 +265,14 @@ function NewGroupDialog({
           setIsLoading(false);
         });
     },
-    [updateConfig, activeGroup, setGroup, setOpen],
+    [
+      updateConfig,
+      activeGroup,
+      setGroup,
+      setOpen,
+      deleteGroup,
+      deleteGridLayout,
+    ],
   );
 
   const onSave = () => {
@@ -273,7 +295,11 @@ function NewGroupDialog({
 
   return (
     <>
-      <Toaster className="toaster group z-[100]" position="top-center" />
+      <Toaster
+        className="toaster group z-[100]"
+        position="top-center"
+        closeButton={true}
+      />
       <Overlay
         open={open}
         onOpenChange={(open) => {
@@ -282,16 +308,16 @@ function NewGroupDialog({
         }}
       >
         <Content
-          className={`min-w-0 ${isMobile ? "w-full p-3 rounded-t-2xl max-h-[90%]" : "w-6/12 max-h-dvh overflow-y-hidden"}`}
+          className={`min-w-0 ${isMobile ? "max-h-[90%] w-full rounded-t-2xl p-3" : "max-h-dvh w-6/12 overflow-y-hidden"}`}
         >
-          <div className="flex flex-col my-4 overflow-y-auto">
+          <div className="scrollbar-container my-4 flex flex-col overflow-y-auto">
             {editState === "none" && (
               <>
-                <div className="flex flex-row justify-between items-center py-2">
+                <div className="flex flex-row items-center justify-between py-2">
                   <DialogTitle>Camera Groups</DialogTitle>
                   <Button
                     variant="secondary"
-                    className="size-6 p-1 rounded-md text-background bg-secondary-foreground"
+                    className="size-6 rounded-md bg-secondary-foreground p-1 text-background"
                     onClick={() => {
                       setEditState("add");
                     }}
@@ -312,7 +338,7 @@ function NewGroupDialog({
 
             {editState != "none" && (
               <>
-                <div className="flex flex-row justify-between items-center mb-3">
+                <div className="mb-3 flex flex-row items-center justify-between">
                   <DialogTitle>
                     {editState == "add" ? "Add" : "Edit"} Camera Group
                   </DialogTitle>
@@ -330,6 +356,65 @@ function NewGroupDialog({
           </div>
         </Content>
       </Overlay>
+    </>
+  );
+}
+
+type EditGroupDialogProps = {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  currentGroups: [string, CameraGroupConfig][];
+  activeGroup?: string;
+};
+export function EditGroupDialog({
+  open,
+  setOpen,
+  currentGroups,
+  activeGroup,
+}: EditGroupDialogProps) {
+  // editing group and state
+
+  const editingGroup = useMemo(() => {
+    if (currentGroups && activeGroup) {
+      return currentGroups.find(([groupName]) => groupName === activeGroup);
+    } else {
+      return undefined;
+    }
+  }, [currentGroups, activeGroup]);
+
+  const [isLoading, setIsLoading] = useState(false);
+
+  return (
+    <>
+      <Toaster
+        className="toaster group z-[100]"
+        position="top-center"
+        closeButton={true}
+      />
+      <Dialog
+        open={open}
+        onOpenChange={(open) => {
+          setOpen(open);
+        }}
+      >
+        <DialogContent
+          className={`min-w-0 ${isMobile ? "max-h-[90%] w-full rounded-t-2xl p-3" : "max-h-dvh w-6/12 overflow-y-hidden"}`}
+        >
+          <div className="scrollbar-container my-4 flex flex-col overflow-y-auto">
+            <div className="mb-3 flex flex-row items-center justify-between">
+              <DialogTitle>Edit Camera Group</DialogTitle>
+            </div>
+            <CameraGroupEdit
+              currentGroups={currentGroups}
+              editingGroup={editingGroup}
+              isLoading={isLoading}
+              setIsLoading={setIsLoading}
+              onSave={() => setOpen(false)}
+              onCancel={() => setOpen(false)}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -355,7 +440,7 @@ export function CameraGroupRow({
     <>
       <div
         key={group[0]}
-        className="flex md:p-1 rounded-lg flex-row items-center justify-between md:mx-2 my-1.5 transition-background duration-100"
+        className="transition-background my-1.5 flex flex-row items-center justify-between rounded-lg duration-100 md:p-1"
       >
         <div className={`flex items-center`}>
           <p className="cursor-default">{group[0]}</p>
@@ -383,7 +468,7 @@ export function CameraGroupRow({
 
         {isMobile && (
           <>
-            <DropdownMenu>
+            <DropdownMenu modal={false}>
               <DropdownMenuTrigger>
                 <HiOutlineDotsVertical className="size-5" />
               </DropdownMenuTrigger>
@@ -397,7 +482,7 @@ export function CameraGroupRow({
           </>
         )}
         {!isMobile && (
-          <div className="flex flex-row gap-2 items-center">
+          <div className="flex flex-row items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
                 <IconWrapper
@@ -465,11 +550,18 @@ export function CameraGroupEdit({
         {
           message: "Camera group name already exists.",
         },
-      ),
-    cameras: z.array(z.string()).min(2, {
-      message: "You must select at least two cameras.",
-    }),
-    icon: z.string(),
+      )
+      .refine((value: string) => value.toLowerCase() !== "default", {
+        message: "Invalid camera group name.",
+      }),
+
+    cameras: z.array(z.string()),
+    icon: z
+      .string()
+      .min(1, { message: "You must select an icon." })
+      .refine((value) => Object.keys(LuIcons).includes(value), {
+        message: "Invalid icon",
+      }),
   });
 
   const onSubmit = useCallback(
@@ -525,10 +617,10 @@ export function CameraGroupEdit({
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    mode: "onChange",
+    mode: "onSubmit",
     defaultValues: {
       name: (editingGroup && editingGroup[0]) ?? "",
-      icon: editingGroup && editingGroup[1].icon,
+      icon: editingGroup && (editingGroup[1].icon as IconName),
       cameras: editingGroup && editingGroup[1].cameras,
     },
   });
@@ -547,7 +639,7 @@ export function CameraGroupEdit({
               <FormLabel>Name</FormLabel>
               <FormControl>
                 <Input
-                  className="w-full p-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground dark:[color-scheme:dark]"
+                  className="w-full border border-input bg-background p-2 hover:bg-accent hover:text-accent-foreground dark:[color-scheme:dark]"
                   placeholder="Enter a name..."
                   disabled={editingGroup !== undefined}
                   {...field}
@@ -558,8 +650,8 @@ export function CameraGroupEdit({
           )}
         />
 
-        <Separator className="flex my-2 bg-secondary" />
-        <div className="max-h-[40dvh] overflow-y-auto">
+        <Separator className="my-2 flex bg-secondary" />
+        <div className="scrollbar-container max-h-[25dvh] overflow-y-auto md:max-h-[40dvh]">
           <FormField
             control={form.control}
             name="cameras"
@@ -569,6 +661,7 @@ export function CameraGroupEdit({
                 <FormDescription>
                   Select cameras for this group.
                 </FormDescription>
+                <FormMessage />
                 {[
                   ...(birdseyeConfig?.enabled ? ["birdseye"] : []),
                   ...Object.keys(config?.cameras ?? {}),
@@ -586,50 +679,40 @@ export function CameraGroupEdit({
                     />
                   </FormControl>
                 ))}
-                <FormMessage />
               </FormItem>
             )}
           />
         </div>
 
-        <Separator className="flex my-2 bg-secondary" />
+        <Separator className="my-2 flex bg-secondary" />
         <FormField
           control={form.control}
           name="icon"
           render={({ field }) => (
-            <FormItem className="space-y-3">
+            <FormItem className="flex flex-col space-y-2">
               <FormLabel>Icon</FormLabel>
               <FormControl>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select an icon" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {GROUP_ICONS.map((gIcon) => (
-                      <SelectItem key={gIcon} value={gIcon}>
-                        <div className="flex flex-row justify-start items-center gap-2">
-                          <div className="size-4">{getIconForGroup(gIcon)}</div>
-                          {gIcon}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <IconPicker
+                  selectedIcon={{
+                    name: field.value,
+                    Icon: field.value
+                      ? LuIcons[field.value as IconName]
+                      : undefined,
+                  }}
+                  setSelectedIcon={(newIcon) => {
+                    field.onChange(newIcon?.name ?? undefined);
+                  }}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        <Separator className="flex my-2 bg-secondary" />
+        <Separator className="my-2 flex bg-secondary" />
 
-        <div className="flex flex-row gap-2 pt-5">
-          <Button className="flex flex-1" onClick={onCancel}>
+        <div className="flex flex-row gap-2 py-5 md:pb-0">
+          <Button type="button" className="flex flex-1" onClick={onCancel}>
             Cancel
           </Button>
           <Button

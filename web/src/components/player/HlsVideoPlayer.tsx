@@ -6,10 +6,18 @@ import {
   useState,
 } from "react";
 import Hls from "hls.js";
-import { isAndroid, isDesktop, isMobile } from "react-device-detect";
+import { isAndroid, isDesktop, isIOS, isMobile } from "react-device-detect";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import VideoControls from "./VideoControls";
 import { VideoResolutionType } from "@/types/live";
+import useSWR from "swr";
+import { FrigateConfig } from "@/types/frigateConfig";
+import { AxiosResponse } from "axios";
+import { toast } from "sonner";
+import { useOverlayState } from "@/hooks/use-overlay-state";
+import { usePersistence } from "@/hooks/use-persistence";
+import { cn } from "@/lib/utils";
+import { ASPECT_VERTICAL_LAYOUT } from "@/types/record";
 
 // Android native hls does not seek correctly
 const USE_NATIVE_HLS = !isAndroid;
@@ -24,23 +32,31 @@ type HlsVideoPlayerProps = {
   visible: boolean;
   currentSource: string;
   hotKeys: boolean;
+  fullscreen: boolean;
   onClipEnded?: () => void;
   onPlayerLoaded?: () => void;
   onTimeUpdate?: (time: number) => void;
   onPlaying?: () => void;
   setFullResolution?: React.Dispatch<React.SetStateAction<VideoResolutionType>>;
+  onUploadFrame?: (playTime: number) => Promise<AxiosResponse> | undefined;
+  toggleFullscreen?: () => void;
 };
 export default function HlsVideoPlayer({
   videoRef,
   visible,
   currentSource,
   hotKeys,
+  fullscreen,
   onClipEnded,
   onPlayerLoaded,
   onTimeUpdate,
   onPlaying,
   setFullResolution,
+  onUploadFrame,
+  toggleFullscreen,
 }: HlsVideoPlayerProps) {
+  const { data: config } = useSWR<FrigateConfig>("config");
+
   // playback
 
   const hlsRef = useRef<Hls>();
@@ -56,6 +72,11 @@ export default function HlsVideoPlayer({
           height: videoRef.current.videoHeight,
         });
       }
+
+      setTallCamera(
+        videoRef.current.videoWidth / videoRef.current.videoHeight <
+          ASPECT_VERTICAL_LAYOUT,
+      );
     }
   }, [videoRef, setFullResolution]);
 
@@ -95,9 +116,15 @@ export default function HlsVideoPlayer({
 
   // controls
 
+  const [tallCamera, setTallCamera] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [muted, setMuted] = useState(true);
-  const [volume, setVolume] = useState(1.0);
+  const [muted, setMuted] = useOverlayState("playerMuted", true);
+  const [volume, setVolume] = useOverlayState("playerVolume", 1.0);
+  const [defaultPlaybackRate] = usePersistence("playbackRate", 1);
+  const [playbackRate, setPlaybackRate] = useOverlayState(
+    "playbackRate",
+    defaultPlaybackRate ?? 1,
+  );
   const [mobileCtrlTimeout, setMobileCtrlTimeout] = useState<NodeJS.Timeout>();
   const [controls, setControls] = useState(isMobile);
   const [controlsOpen, setControlsOpen] = useState(false);
@@ -134,16 +161,25 @@ export default function HlsVideoPlayer({
   return (
     <TransformWrapper minScale={1.0}>
       <VideoControls
-        className="absolute bottom-5 left-1/2 -translate-x-1/2 z-50"
+        className={cn(
+          "absolute left-1/2 z-50 -translate-x-1/2",
+          tallCamera ? "bottom-12" : "bottom-5",
+        )}
         video={videoRef.current}
         isPlaying={isPlaying}
-        show={visible && controls}
+        show={visible && (controls || controlsOpen)}
         muted={muted}
         volume={volume}
-        controlsOpen={controlsOpen}
+        features={{
+          volume: true,
+          seek: true,
+          playbackRate: true,
+          plusUpload: config?.plus?.enabled == true,
+          fullscreen: !isIOS,
+        }}
         setControlsOpen={setControlsOpen}
-        setMuted={setMuted}
-        playbackRate={videoRef.current?.playbackRate ?? 1}
+        setMuted={(muted) => setMuted(muted, true)}
+        playbackRate={playbackRate ?? 1}
         hotKeys={hotKeys}
         onPlayPause={(play) => {
           if (!videoRef.current) {
@@ -165,9 +201,30 @@ export default function HlsVideoPlayer({
 
           videoRef.current.currentTime = Math.max(0, currentTime + diff);
         }}
-        onSetPlaybackRate={(rate) =>
-          videoRef.current ? (videoRef.current.playbackRate = rate) : null
-        }
+        onSetPlaybackRate={(rate) => {
+          setPlaybackRate(rate);
+
+          if (videoRef.current) {
+            videoRef.current.playbackRate = rate;
+          }
+        }}
+        onUploadFrame={async () => {
+          if (videoRef.current && onUploadFrame) {
+            const resp = await onUploadFrame(videoRef.current.currentTime);
+
+            if (resp && resp.status == 200) {
+              toast.success("Successfully submitted frame to Frigate+", {
+                position: "top-center",
+              });
+            } else {
+              toast.success("Failed to submit frame to Frigate+", {
+                position: "top-center",
+              });
+            }
+          }
+        }}
+        fullscreen={fullscreen}
+        toggleFullscreen={toggleFullscreen}
       />
       <TransformComponent
         wrapperStyle={{
@@ -185,13 +242,15 @@ export default function HlsVideoPlayer({
       >
         <video
           ref={videoRef}
-          className={`size-full bg-black rounded-lg md:rounded-2xl ${loadedMetadata ? "" : "invisible"}`}
+          className={`size-full rounded-lg bg-black md:rounded-2xl ${loadedMetadata ? "" : "invisible"}`}
           preload="auto"
           autoPlay
           controls={false}
           playsInline
           muted={muted}
-          onVolumeChange={() => setVolume(videoRef.current?.volume ?? 1.0)}
+          onVolumeChange={() =>
+            setVolume(videoRef.current?.volume ?? 1.0, true)
+          }
           onPlay={() => {
             setIsPlaying(true);
 
@@ -213,8 +272,20 @@ export default function HlsVideoPlayer({
               ? onTimeUpdate(videoRef.current.currentTime)
               : undefined
           }
-          onLoadedData={onPlayerLoaded}
-          onLoadedMetadata={handleLoadedMetadata}
+          onLoadedData={() => {
+            onPlayerLoaded?.();
+            handleLoadedMetadata();
+
+            if (videoRef.current) {
+              if (playbackRate) {
+                videoRef.current.playbackRate = playbackRate;
+              }
+
+              if (volume) {
+                videoRef.current.volume = volume;
+              }
+            }
+          }}
           onEnded={onClipEnded}
           onError={(e) => {
             if (
@@ -225,6 +296,14 @@ export default function HlsVideoPlayer({
             ) {
               setLoadedMetadata(false);
               setUseHlsCompat(true);
+            } else {
+              toast.error(
+                // @ts-expect-error code does exist
+                `Failed to play recordings (error ${e.target.error.code}): ${e.target.error.message}`,
+                {
+                  position: "top-center",
+                },
+              );
             }
           }}
         />

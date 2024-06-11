@@ -20,6 +20,8 @@ import axios from "axios";
 import { toast } from "sonner";
 import { Toaster } from "../ui/sonner";
 import ActivityIndicator from "../indicators/activity-indicator";
+import { Link } from "react-router-dom";
+import { LuExternalLink } from "react-icons/lu";
 
 type MotionMaskEditPaneProps = {
   polygons?: Polygon[];
@@ -133,9 +135,12 @@ export default function MotionMaskEditPane({
       })
       .then((res) => {
         if (res.status === 200) {
-          toast.success(`${polygon.name || "Motion Mask"} has been saved.`, {
-            position: "top-center",
-          });
+          toast.success(
+            `${polygon.name || "Motion Mask"} has been saved. Restart Frigate to apply changes.`,
+            {
+              position: "top-center",
+            },
+          );
           updateConfig();
         } else {
           toast.error(`Failed to save config changes: ${res.statusText}`, {
@@ -183,20 +188,33 @@ export default function MotionMaskEditPane({
 
   return (
     <>
-      <Toaster position="top-center" />
+      <Toaster position="top-center" closeButton={true} />
       <Heading as="h3" className="my-2">
         {polygon.name.length ? "Edit" : "New"} Motion Mask
       </Heading>
-      <div className="text-sm text-muted-foreground my-2">
+      <div className="my-3 space-y-3 text-sm text-muted-foreground">
         <p>
           Motion masks are used to prevent unwanted types of motion from
-          triggering detection. Over masking will make it more difficult for
-          objects to be tracked.
+          triggering detection (example: tree branches, camera timestamps).
+          Motion masks should be used <em>very sparingly</em>, over-masking will
+          make it more difficult for objects to be tracked.
         </p>
+
+        <div className="flex items-center text-primary">
+          <Link
+            to="https://docs.frigate.video/configuration/masks/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline"
+          >
+            Read the documentation{" "}
+            <LuExternalLink className="ml-2 inline-flex size-3" />
+          </Link>
+        </div>
       </div>
       <Separator className="my-3 bg-secondary" />
       {polygons && activePolygonIndex !== undefined && (
-        <div className="flex flex-row my-2 text-sm w-full justify-between">
+        <div className="my-2 flex w-full flex-row justify-between text-sm">
           <div className="my-1 inline-flex">
             {polygons[activePolygonIndex].points.length}{" "}
             {polygons[activePolygonIndex].points.length > 1 ||
@@ -223,7 +241,7 @@ export default function MotionMaskEditPane({
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="space-y-6 flex flex-col flex-1"
+          className="flex flex-1 flex-col space-y-6"
         >
           <FormField
             control={form.control}
@@ -243,7 +261,7 @@ export default function MotionMaskEditPane({
               </FormItem>
             )}
           />
-          <div className="flex flex-col flex-1 justify-end">
+          <div className="flex flex-1 flex-col justify-end">
             <div className="flex flex-row gap-2 pt-5">
               <Button className="flex flex-1" onClick={onCancel}>
                 Cancel

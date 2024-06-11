@@ -1,4 +1,4 @@
-import { LivePlayerMode } from "./live";
+import { IconName } from "@/components/icons/IconPicker";
 
 export interface UiConfig {
   timezone?: string;
@@ -6,8 +6,6 @@ export interface UiConfig {
   date_style?: "full" | "long" | "medium" | "short";
   time_style?: "full" | "long" | "medium" | "short";
   strftime_fmt?: string;
-  live_mode?: LivePlayerMode;
-  use_experimental?: boolean;
   dashboard: boolean;
   order: number;
 }
@@ -222,11 +220,9 @@ export interface CameraConfig {
   };
 }
 
-export const GROUP_ICONS = ["car", "cat", "dog", "leaf"] as const;
-
 export type CameraGroupConfig = {
   cameras: string[];
-  icon: (typeof GROUP_ICONS)[number];
+  icon: IconName;
   order: number;
 };
 

@@ -1,40 +1,64 @@
 import TimeAgo from "../dynamic/TimeAgo";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { FrigateConfig } from "@/types/frigateConfig";
 import { REVIEW_PADDING, ReviewSegment } from "@/types/review";
 import { useNavigate } from "react-router-dom";
 import { RecordingStartingPoint } from "@/types/record";
 import axios from "axios";
-import { Preview } from "@/types/preview";
-import {
-  InProgressPreview,
-  VideoPreview,
-} from "../player/PreviewThumbnailPlayer";
+import { VideoPreview } from "../player/PreviewThumbnailPlayer";
 import { isCurrentHour } from "@/utils/dateUtil";
+import { useCameraPreviews } from "@/hooks/use-camera-previews";
+import { baseUrl } from "@/api/baseUrl";
 
 type AnimatedEventCardProps = {
   event: ReviewSegment;
+  selectedGroup?: string;
 };
-export function AnimatedEventCard({ event }: AnimatedEventCardProps) {
+export function AnimatedEventCard({
+  event,
+  selectedGroup,
+}: AnimatedEventCardProps) {
   const { data: config } = useSWR<FrigateConfig>("config");
 
   const currentHour = useMemo(() => isCurrentHour(event.start_time), [event]);
 
+  const initialTimeRange = useMemo(() => {
+    return {
+      after: Math.round(event.start_time),
+      before: Math.round(event.end_time || event.start_time + 20),
+    };
+  }, [event]);
+
   // preview
 
-  const { data: previews } = useSWR<Preview[]>(
-    currentHour
-      ? null
-      : `/preview/${event.camera}/start/${Math.round(event.start_time)}/end/${Math.round(event.end_time || event.start_time + 20)}`,
-  );
+  const previews = useCameraPreviews(initialTimeRange, {
+    camera: event.camera,
+    fetchPreviews: !currentHour,
+  });
+
+  // visibility
+
+  const [windowVisible, setWindowVisible] = useState(true);
+  const visibilityListener = useCallback(() => {
+    setWindowVisible(document.visibilityState == "visible");
+  }, []);
+
+  useEffect(() => {
+    addEventListener("visibilitychange", visibilityListener);
+
+    return () => {
+      removeEventListener("visibilitychange", visibilityListener);
+    };
+  }, [visibilityListener]);
 
   // interaction
 
   const navigate = useNavigate();
   const onOpenReview = useCallback(() => {
-    navigate("review", {
+    const url = selectedGroup ? `review?group=${selectedGroup}` : "review";
+    navigate(url, {
       state: {
         severity: event.severity,
         recording: {
@@ -45,7 +69,7 @@ export function AnimatedEventCard({ event }: AnimatedEventCardProps) {
       },
     });
     axios.post(`reviews/viewed`, { ids: [event.id] });
-  }, [navigate, event]);
+  }, [navigate, selectedGroup, event]);
 
   // image behavior
 
@@ -62,13 +86,13 @@ export function AnimatedEventCard({ event }: AnimatedEventCardProps) {
     <Tooltip>
       <TooltipTrigger asChild>
         <div
-          className="h-24 4k:h-32 relative"
+          className="relative h-24 4k:h-32"
           style={{
             aspectRatio: aspectRatio,
           }}
         >
           <div
-            className="size-full rounded md:rounded-lg cursor-pointer overflow-hidden"
+            className="size-full cursor-pointer overflow-hidden rounded md:rounded-lg"
             onClick={onOpenReview}
           >
             {previews ? (
@@ -81,24 +105,26 @@ export function AnimatedEventCard({ event }: AnimatedEventCardProps) {
                 setReviewed={() => {}}
                 setIgnoreClick={() => {}}
                 isPlayingBack={() => {}}
+                windowVisible={windowVisible}
               />
             ) : (
-              <InProgressPreview
-                review={event}
-                timeRange={{
-                  after: event.start_time,
-                  before: event.end_time ?? event.start_time + 20,
-                }}
+              <video
+                preload="auto"
+                autoPlay
+                playsInline
+                muted
+                disableRemotePlayback
                 loop
-                showProgress={false}
-                setReviewed={() => {}}
-                setIgnoreClick={() => {}}
-                isPlayingBack={() => {}}
-              />
+              >
+                <source
+                  src={`${baseUrl}api/review/${event.id}/preview?format=mp4`}
+                  type="video/mp4"
+                />
+              </video>
             )}
           </div>
-          <div className="absolute bottom-0 inset-x-0 h-6 bg-gradient-to-t from-slate-900/50 to-transparent rounded">
-            <div className="w-full absolute left-1 bottom-0 text-xs text-white">
+          <div className="absolute inset-x-0 bottom-0 h-6 rounded bg-gradient-to-t from-slate-900/50 to-transparent">
+            <div className="absolute bottom-0 left-1 w-full text-xs text-white">
               <TimeAgo time={event.start_time * 1000} dense />
             </div>
           </div>

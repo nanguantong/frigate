@@ -14,12 +14,23 @@ import {
   StatusMessage,
 } from "@/context/statusbar-provider";
 import { Link } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import { isIOS, isMobile } from "react-device-detect";
+import { isPWA } from "@/utils/isPWA";
 
 function Bottombar() {
   const navItems = useNavigation("secondary");
 
   return (
-    <div className="absolute h-16 inset-x-4 bottom-0 flex flex-row items-center justify-between">
+    <div
+      className={cn(
+        "absolute inset-x-4 bottom-0 flex h-16 flex-row justify-between",
+        isPWA && isIOS
+          ? "portrait:items-start portrait:pt-1 landscape:items-center"
+          : "items-center",
+        isMobile && !isPWA && "h-12 landscape:md:h-16",
+      )}
+    >
       {navItems.map((item) => (
         <NavItem key={item.id} className="p-2" item={item} Icon={item.icon} />
       ))}
@@ -71,18 +82,23 @@ function StatusAlertNav({ className }: StatusAlertNavProps) {
 
   return (
     <Drawer>
-      <DrawerTrigger>
-        <IoIosWarning className="size-5 text-danger" />
+      <DrawerTrigger asChild>
+        <div className="p-2">
+          <IoIosWarning className="size-5 text-danger md:m-[6px]" />
+        </div>
       </DrawerTrigger>
       <DrawerContent
-        className={`max-h-[75dvh] px-2 mx-1 rounded-t-2xl overflow-hidden ${className ?? ""}`}
+        className={cn(
+          "mx-1 max-h-[75dvh] overflow-hidden rounded-t-2xl px-2",
+          className,
+        )}
       >
-        <div className="w-full h-auto py-4 overflow-y-auto overflow-x-hidden flex flex-col items-center gap-2">
+        <div className="scrollbar-container flex h-auto w-full flex-col items-center gap-2 overflow-y-auto overflow-x-hidden py-4">
           {Object.entries(messages).map(([key, messageArray]) => (
-            <div key={key} className="w-full flex items-center gap-2">
+            <div key={key} className="flex w-full items-center gap-2">
               {messageArray.map(({ id, text, color, link }: StatusMessage) => {
                 const message = (
-                  <div key={id} className="flex items-center text-xs gap-2">
+                  <div key={id} className="flex items-center gap-2 text-xs">
                     <IoIosWarning
                       className={`size-5 ${color || "text-danger"}`}
                     />
@@ -91,7 +107,11 @@ function StatusAlertNav({ className }: StatusAlertNavProps) {
                 );
 
                 if (link) {
-                  return <Link to={link}>{message}</Link>;
+                  return (
+                    <Link key={id} to={link}>
+                      {message}
+                    </Link>
+                  );
                 } else {
                   return message;
                 }

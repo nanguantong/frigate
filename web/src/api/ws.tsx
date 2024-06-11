@@ -42,13 +42,17 @@ function useValue(): useValueReturn {
     const cameraStates: WsState = {};
 
     Object.keys(config.cameras).forEach((camera) => {
-      const { name, record, detect, snapshots, audio } = config.cameras[camera];
+      const { name, record, detect, snapshots, audio, onvif } =
+        config.cameras[camera];
       cameraStates[`${name}/recordings/state`] = record.enabled ? "ON" : "OFF";
       cameraStates[`${name}/detect/state`] = detect.enabled ? "ON" : "OFF";
       cameraStates[`${name}/snapshots/state`] = snapshots.enabled
         ? "ON"
         : "OFF";
       cameraStates[`${name}/audio/state`] = audio.enabled ? "ON" : "OFF";
+      cameraStates[`${name}/ptz_autotracker/state`] = onvif.autotracking.enabled
+        ? "ON"
+        : "OFF";
     });
 
     setWsState({ ...wsState, ...cameraStates });
@@ -73,6 +77,7 @@ function useValue(): useValueReturn {
       });
     },
     shouldReconnect: () => true,
+    retryOnError: true,
   });
 
   const setState = useCallback(
@@ -161,6 +166,17 @@ export function useAudioState(camera: string): {
   return { payload: payload as ToggleableSetting, send };
 }
 
+export function useAutotrackingState(camera: string): {
+  payload: ToggleableSetting;
+  send: (payload: ToggleableSetting, retain?: boolean) => void;
+} {
+  const {
+    value: { payload },
+    send,
+  } = useWs(`${camera}/ptz_autotracker/state`, `${camera}/ptz_autotracker/set`);
+  return { payload: payload as ToggleableSetting, send };
+}
+
 export function usePtzCommand(camera: string): {
   payload: string;
   send: (payload: string, retain?: boolean) => void;
@@ -204,13 +220,39 @@ export function useFrigateStats(): { payload: FrigateStats } {
   return { payload: JSON.parse(payload as string) };
 }
 
-export function useInitialCameraState(camera: string): {
+export function useInitialCameraState(
+  camera: string,
+  revalidateOnFocus: boolean,
+): {
   payload: FrigateCameraState;
 } {
   const {
     value: { payload },
-  } = useWs("camera_activity", "");
+    send: sendCommand,
+  } = useWs("camera_activity", "onConnect");
   const data = JSON.parse(payload as string);
+
+  useEffect(() => {
+    let listener = undefined;
+    if (revalidateOnFocus) {
+      sendCommand("onConnect");
+      listener = () => {
+        if (document.visibilityState == "visible") {
+          sendCommand("onConnect");
+        }
+      };
+      addEventListener("visibilitychange", listener);
+    }
+
+    return () => {
+      if (listener) {
+        removeEventListener("visibilitychange", listener);
+      }
+    };
+    // only refresh when onRefresh value changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revalidateOnFocus]);
+
   return { payload: data ? data[camera] : undefined };
 }
 

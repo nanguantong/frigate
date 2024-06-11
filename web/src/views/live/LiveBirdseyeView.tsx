@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useResizeObserver } from "@/hooks/resize-observer";
 import { FrigateConfig } from "@/types/frigateConfig";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import {
   isDesktop,
   isMobile,
@@ -18,34 +18,24 @@ import { useNavigate } from "react-router-dom";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import useSWR from "swr";
 
-export default function LiveBirdseyeView() {
+type LiveBirdseyeViewProps = {
+  fullscreen: boolean;
+  toggleFullscreen: () => void;
+};
+
+export default function LiveBirdseyeView({
+  fullscreen,
+  toggleFullscreen,
+}: LiveBirdseyeViewProps) {
   const { data: config } = useSWR<FrigateConfig>("config");
   const navigate = useNavigate();
   const { isPortrait } = useMobileOrientation();
   const mainRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [{ width: windowWidth, height: windowHeight }] =
     useResizeObserver(window);
 
-  // fullscreen state
-
-  useEffect(() => {
-    if (mainRef.current == null) {
-      return;
-    }
-
-    const listener = () => {
-      setFullscreen(document.fullscreenElement != null);
-    };
-    document.addEventListener("fullscreenchange", listener);
-
-    return () => {
-      document.removeEventListener("fullscreenchange", listener);
-    };
-  }, [mainRef]);
-
   // playback state
-
-  const [fullscreen, setFullscreen] = useState(false);
 
   const cameraAspectRatio = useMemo(() => {
     if (!config) {
@@ -55,12 +45,34 @@ export default function LiveBirdseyeView() {
     return config.birdseye.width / config.birdseye.height;
   }, [config]);
 
+  const windowAspectRatio = useMemo(() => {
+    return windowWidth / windowHeight;
+  }, [windowWidth, windowHeight]);
+
+  const containerAspectRatio = useMemo(() => {
+    if (!containerRef.current) {
+      return windowAspectRatio ?? 0;
+    }
+
+    return containerRef.current.clientWidth / containerRef.current.clientHeight;
+  }, [windowAspectRatio, containerRef]);
+
+  const constrainedAspectRatio = useMemo<number>(() => {
+    if (isMobile || fullscreen) {
+      return cameraAspectRatio;
+    } else {
+      return containerAspectRatio < cameraAspectRatio
+        ? containerAspectRatio
+        : cameraAspectRatio;
+    }
+  }, [cameraAspectRatio, containerAspectRatio, fullscreen]);
+
   const growClassName = useMemo(() => {
     if (isMobile) {
       if (isPortrait) {
         return "absolute left-2 right-2 top-[50%] -translate-y-[50%]";
       } else {
-        if (cameraAspectRatio > 16 / 9) {
+        if (cameraAspectRatio > containerAspectRatio) {
           return "absolute left-0 top-[50%] -translate-y-[50%]";
         } else {
           return "absolute top-2 bottom-2 left-[50%] -translate-x-[50%]";
@@ -69,15 +81,15 @@ export default function LiveBirdseyeView() {
     }
 
     if (fullscreen) {
-      if (cameraAspectRatio > 16 / 9) {
+      if (cameraAspectRatio > containerAspectRatio) {
         return "absolute inset-x-2 top-[50%] -translate-y-[50%]";
       } else {
         return "absolute inset-y-2 left-[50%] -translate-x-[50%]";
       }
     } else {
-      return "absolute top-2 bottom-2 left-[50%] -translate-x-[50%]";
+      return "absolute top-0 bottom-0 left-[50%] -translate-x-[50%]";
     }
-  }, [cameraAspectRatio, fullscreen, isPortrait]);
+  }, [cameraAspectRatio, containerAspectRatio, fullscreen, isPortrait]);
 
   const preferredLiveMode = useMemo(() => {
     if (!config || !config.birdseye.restream) {
@@ -91,20 +103,6 @@ export default function LiveBirdseyeView() {
     return "mse";
   }, [config]);
 
-  const windowAspectRatio = useMemo(() => {
-    return windowWidth / windowHeight;
-  }, [windowWidth, windowHeight]);
-
-  const aspectRatio = useMemo<number>(() => {
-    if (isMobile || fullscreen) {
-      return cameraAspectRatio;
-    } else {
-      return windowAspectRatio < cameraAspectRatio
-        ? windowAspectRatio - 0.05
-        : cameraAspectRatio - 0.03;
-    }
-  }, [cameraAspectRatio, windowAspectRatio, fullscreen]);
-
   if (!config) {
     return <ActivityIndicator />;
   }
@@ -115,20 +113,20 @@ export default function LiveBirdseyeView() {
         ref={mainRef}
         className={
           fullscreen
-            ? `fixed inset-0 bg-black z-30`
-            : `size-full p-2 flex flex-col ${isMobile ? "landscape:flex-row" : ""}`
+            ? `fixed inset-0 z-30 bg-black`
+            : `flex size-full flex-col p-2 ${isMobile ? "landscape:flex-row" : ""}`
         }
       >
         <div
           className={
             fullscreen
-              ? `absolute right-32 top-1 z-40 ${isMobile ? "landscape:left-2 landscape:right-auto landscape:bottom-1 landscape:top-auto" : ""}`
-              : `w-full h-12 flex flex-row items-center justify-between ${isMobile ? "landscape:w-min landscape:h-full landscape:flex-col" : ""}`
+              ? `absolute right-32 top-1 z-40 ${isMobile ? "landscape:bottom-1 landscape:left-2 landscape:right-auto landscape:top-auto" : ""}`
+              : `flex h-12 w-full flex-row items-center justify-between ${isMobile ? "landscape:h-full landscape:w-min landscape:flex-col" : ""}`
           }
         >
           {!fullscreen ? (
             <Button
-              className={`rounded-lg flex items-center gap-2 ${isMobile ? "ml-2" : "ml-0"}`}
+              className={`flex items-center gap-2 rounded-lg ${isMobile ? "ml-2" : "ml-0"}`}
               size={isMobile ? "icon" : "sm"}
               onClick={() => navigate(-1)}
             >
@@ -140,7 +138,7 @@ export default function LiveBirdseyeView() {
           )}
           <TooltipProvider>
             <div
-              className={`flex flex-row items-center gap-2 mr-1 *:rounded-lg ${isMobile ? "landscape:flex-col" : ""}`}
+              className={`mr-1 flex flex-row items-center gap-2 *:rounded-lg ${isMobile ? "landscape:flex-col" : ""}`}
             >
               <CameraFeatureToggle
                 className="p-2 md:p-0"
@@ -148,41 +146,38 @@ export default function LiveBirdseyeView() {
                 Icon={fullscreen ? FaCompress : FaExpand}
                 isActive={fullscreen}
                 title={fullscreen ? "Close" : "Fullscreen"}
-                onClick={() => {
-                  if (fullscreen) {
-                    document.exitFullscreen();
-                  } else {
-                    mainRef.current?.requestFullscreen();
-                  }
-                }}
+                onClick={toggleFullscreen}
               />
             </div>
           </TooltipProvider>
         </div>
-        <TransformComponent
-          wrapperStyle={{
-            width: "100%",
-            height: "100%",
-          }}
-          contentStyle={{
-            position: "relative",
-            width: "100%",
-            height: "100%",
-          }}
-        >
-          <div
-            className={growClassName}
-            style={{
-              aspectRatio: aspectRatio,
+        <div id="player-container" className="size-full" ref={containerRef}>
+          <TransformComponent
+            wrapperStyle={{
+              width: "100%",
+              height: "100%",
+            }}
+            contentStyle={{
+              position: "relative",
+              width: "100%",
+              height: "100%",
             }}
           >
-            <BirdseyeLivePlayer
-              className="h-full"
-              birdseyeConfig={config.birdseye}
-              liveMode={preferredLiveMode}
-            />
-          </div>
-        </TransformComponent>
+            <div
+              className={growClassName}
+              style={{
+                aspectRatio: constrainedAspectRatio,
+              }}
+            >
+              <BirdseyeLivePlayer
+                className={`${fullscreen ? "*:rounded-none" : ""}`}
+                birdseyeConfig={config.birdseye}
+                liveMode={preferredLiveMode}
+                containerRef={containerRef}
+              />
+            </div>
+          </TransformComponent>
+        </div>
       </div>
     </TransformWrapper>
   );

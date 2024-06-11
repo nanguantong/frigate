@@ -3,6 +3,8 @@
 import copy
 import datetime
 import logging
+import multiprocessing as mp
+import queue
 import re
 import shlex
 import urllib.parse
@@ -237,7 +239,7 @@ def update_yaml(data, key_path, new_value):
                 temp[key[0]] += [{}] * (key[1] - len(temp[key[0]]) + 1)
             temp = temp[key[0]][key[1]]
         else:
-            if key not in temp:
+            if key not in temp or temp[key] is None:
                 temp[key] = {}
             temp = temp[key]
 
@@ -279,7 +281,7 @@ def find_by_key(dictionary, target_key):
     return None
 
 
-def save_default_config(location: str):
+def save_default_config(location: str) -> None:
     try:
         with open(location, "w") as f:
             f.write(
@@ -303,6 +305,11 @@ cameras:
             )
     except PermissionError:
         logger.error("Unable to write default config to /config")
+        return
+
+    logger.info(
+        "Created default config file, see the getting started docs for configuration https://docs.frigate.video/guides/getting_started"
+    )
 
 
 def get_tomorrow_at_time(hour: int) -> datetime.datetime:
@@ -332,3 +339,13 @@ def clear_and_unlink(file: Path, missing_ok: bool = True) -> None:
         pass
 
     file.unlink(missing_ok=missing_ok)
+
+
+def empty_and_close_queue(q: mp.Queue):
+    while True:
+        try:
+            q.get(block=True, timeout=0.5)
+        except queue.Empty:
+            q.close()
+            q.join_thread()
+            return

@@ -12,17 +12,17 @@ import {
   useMotionContourArea,
   useMotionThreshold,
 } from "@/api/ws";
-import { Skeleton } from "../ui/skeleton";
-import { Button } from "../ui/button";
-import { Switch } from "../ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
-import { Separator } from "../ui/separator";
+import { Separator } from "@/components/ui/separator";
 import { Link } from "react-router-dom";
 import { LuExternalLink } from "react-icons/lu";
 import { StatusBarMessagesContext } from "@/context/statusbar-provider";
 
-type MotionTunerProps = {
+type MotionTunerViewProps = {
   selectedCamera: string;
   setUnsavedChanges: React.Dispatch<React.SetStateAction<boolean>>;
 };
@@ -33,16 +33,16 @@ type MotionSettings = {
   improve_contrast?: boolean;
 };
 
-export default function MotionTuner({
+export default function MotionTunerView({
   selectedCamera,
   setUnsavedChanges,
-}: MotionTunerProps) {
+}: MotionTunerViewProps) {
   const { data: config, mutate: updateConfig } =
     useSWR<FrigateConfig>("config");
   const [changedValue, setChangedValue] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const { addMessage, clearMessages } = useContext(StatusBarMessagesContext)!;
+  const { addMessage, removeMessage } = useContext(StatusBarMessagesContext)!;
 
   const { send: sendMotionThreshold } = useMotionThreshold(selectedCamera);
   const { send: sendMotionContourArea } = useMotionContourArea(selectedCamera);
@@ -148,16 +148,23 @@ export default function MotionTuner({
   const onCancel = useCallback(() => {
     setMotionSettings(origMotionSettings);
     setChangedValue(false);
-    clearMessages("motion_tuner");
-  }, [origMotionSettings, clearMessages]);
+    removeMessage("motion_tuner", `motion_tuner_${selectedCamera}`);
+  }, [origMotionSettings, removeMessage, selectedCamera]);
 
   useEffect(() => {
     if (changedValue) {
-      addMessage("motion_tuner", "Unsaved motion tuner changes");
+      addMessage(
+        "motion_tuner",
+        `Unsaved motion tuner changes (${selectedCamera})`,
+        undefined,
+        `motion_tuner_${selectedCamera}`,
+      );
     } else {
-      clearMessages("motion_tuner");
+      removeMessage("motion_tuner", `motion_tuner_${selectedCamera}`);
     }
-  }, [changedValue, addMessage, clearMessages]);
+    // we know that these deps are correct
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [changedValue, selectedCamera]);
 
   useEffect(() => {
     document.title = "Motion Tuner - Frigate";
@@ -168,13 +175,13 @@ export default function MotionTuner({
   }
 
   return (
-    <div className="flex flex-col md:flex-row size-full">
-      <Toaster position="top-center" />
-      <div className="flex flex-col h-full w-full overflow-y-auto mt-2 md:mt-0 mb-10 md:mb-0 md:w-3/12 order-last md:order-none md:mr-2 rounded-lg border-secondary-foreground border-[1px] p-2 bg-background_alt">
+    <div className="flex size-full flex-col md:flex-row">
+      <Toaster position="top-center" closeButton={true} />
+      <div className="scrollbar-container order-last mb-10 mt-2 flex h-full w-full flex-col overflow-y-auto rounded-lg border-[1px] border-secondary-foreground bg-background_alt p-2 md:order-none md:mb-0 md:mr-2 md:mt-0 md:w-3/12">
         <Heading as="h3" className="my-2">
           Motion Detection Tuner
         </Heading>
-        <div className="text-sm text-muted-foreground my-3 space-y-3">
+        <div className="my-3 space-y-3 text-sm text-muted-foreground">
           <p>
             Frigate uses motion detection as a first line check to see if there
             is anything happening in the frame worth checking with object
@@ -189,18 +196,18 @@ export default function MotionTuner({
               className="inline"
             >
               Read the Motion Tuning Guide{" "}
-              <LuExternalLink className="size-3 ml-2 inline-flex" />
+              <LuExternalLink className="ml-2 inline-flex size-3" />
             </Link>
           </div>
         </div>
-        <Separator className="flex my-2 bg-secondary" />
-        <div className="flex flex-col w-full space-y-6">
+        <Separator className="my-2 flex bg-secondary" />
+        <div className="flex w-full flex-col space-y-6">
           <div className="mt-2 space-y-6">
             <div className="space-y-0.5">
               <Label htmlFor="motion-threshold" className="text-md">
                 Threshold
               </Label>
-              <div className="text-sm text-muted-foreground my-2">
+              <div className="my-2 text-sm text-muted-foreground">
                 <p>
                   The threshold value dictates how much of a change in a pixel's
                   luminance is required to be considered motion.{" "}
@@ -221,7 +228,7 @@ export default function MotionTuner({
                   handleMotionConfigChange({ threshold: value[0] });
                 }}
               />
-              <div className="text-lg ml-6 mr-2 flex align-center">
+              <div className="align-center ml-6 mr-2 flex text-lg">
                 {motionSettings.threshold}
               </div>
             </div>
@@ -231,7 +238,7 @@ export default function MotionTuner({
               <Label htmlFor="motion-threshold" className="text-md">
                 Contour Area
               </Label>
-              <div className="text-sm text-muted-foreground my-2">
+              <div className="my-2 text-sm text-muted-foreground">
                 <p>
                   The contour area value is used to decide which groups of
                   changed pixels qualify as motion. <em>Default: 10</em>
@@ -251,12 +258,12 @@ export default function MotionTuner({
                   handleMotionConfigChange({ contour_area: value[0] });
                 }}
               />
-              <div className="text-lg ml-6 mr-2 flex align-center">
+              <div className="align-center ml-6 mr-2 flex text-lg">
                 {motionSettings.contour_area}
               </div>
             </div>
           </div>
-          <Separator className="flex my-2 bg-secondary" />
+          <Separator className="my-2 flex bg-secondary" />
           <div className="flex flex-row items-center justify-between">
             <div className="space-y-0.5">
               <Label htmlFor="improve-contrast">Improve Contrast</Label>
@@ -275,7 +282,7 @@ export default function MotionTuner({
             />
           </div>
         </div>
-        <div className="flex flex-col flex-1 justify-end">
+        <div className="flex flex-1 flex-col justify-end">
           <div className="flex flex-row gap-2 pt-5">
             <Button className="flex flex-1" onClick={onCancel}>
               Reset
@@ -300,7 +307,7 @@ export default function MotionTuner({
       </div>
 
       {cameraConfig ? (
-        <div className="flex md:w-7/12 md:grow md:h-dvh md:max-h-full">
+        <div className="flex md:h-dvh md:max-h-full md:w-7/12 md:grow">
           <div className="size-full min-h-10">
             <AutoUpdatingCameraImage
               camera={cameraConfig.name}

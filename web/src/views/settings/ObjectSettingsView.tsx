@@ -5,19 +5,19 @@ import { CameraConfig, FrigateConfig } from "@/types/frigateConfig";
 import { Toaster } from "@/components/ui/sonner";
 import { Label } from "@/components/ui/label";
 import useSWR from "swr";
-import Heading from "../ui/heading";
-import { Switch } from "../ui/switch";
+import Heading from "@/components/ui/heading";
+import { Switch } from "@/components/ui/switch";
 import { usePersistence } from "@/hooks/use-persistence";
-import { Skeleton } from "../ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useCameraActivity } from "@/hooks/use-camera-activity";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ObjectType } from "@/types/ws";
 import useDeepMemo from "@/hooks/use-deep-memo";
-import { Card } from "../ui/card";
+import { Card } from "@/components/ui/card";
 import { getIconForLabel } from "@/utils/iconUtil";
 import { capitalizeFirstLetter } from "@/utils/stringUtil";
 
-type ObjectSettingsProps = {
+type ObjectSettingsViewProps = {
   selectedCamera?: string;
 };
 
@@ -25,9 +25,9 @@ type Options = { [key: string]: boolean };
 
 const emptyObject = Object.freeze({});
 
-export default function ObjectSettings({
+export default function ObjectSettingsView({
   selectedCamera,
-}: ObjectSettingsProps) {
+}: ObjectSettingsViewProps) {
   const { data: config } = useSWR<FrigateConfig>("config");
 
   const DEBUG_OPTIONS = [
@@ -64,7 +64,7 @@ export default function ObjectSettings({
     },
   ];
 
-  const [options, setOptions] = usePersistence<Options>(
+  const [options, setOptions, optionsLoaded] = usePersistence<Options>(
     `${selectedCamera}-feed`,
     emptyObject,
   );
@@ -87,17 +87,20 @@ export default function ObjectSettings({
 
   const memoizedObjects = useDeepMemo(objects);
 
-  const searchParams = useMemo(
-    () =>
-      new URLSearchParams(
-        Object.keys(options || {}).reduce((memo, key) => {
-          //@ts-expect-error we know this is correct
-          memo.push([key, options[key] === true ? "1" : "0"]);
-          return memo;
-        }, []),
-      ),
-    [options],
-  );
+  const searchParams = useMemo(() => {
+    if (!optionsLoaded) {
+      return new URLSearchParams();
+    }
+
+    const params = new URLSearchParams(
+      Object.keys(options || {}).reduce((memo, key) => {
+        //@ts-expect-error we know this is correct
+        memo.push([key, options[key] === true ? "1" : "0"]);
+        return memo;
+      }, []),
+    );
+    return params;
+  }, [options, optionsLoaded]);
 
   useEffect(() => {
     document.title = "Object Settings - Frigate";
@@ -108,13 +111,13 @@ export default function ObjectSettings({
   }
 
   return (
-    <div className="flex flex-col md:flex-row size-full">
-      <Toaster position="top-center" />
-      <div className="flex flex-col h-full w-full overflow-y-auto mt-2 md:mt-0 mb-10 md:mb-0 md:w-3/12 order-last md:order-none md:mr-2 rounded-lg border-secondary-foreground border-[1px] p-2 bg-background_alt">
+    <div className="flex size-full flex-col md:flex-row">
+      <Toaster position="top-center" closeButton={true} />
+      <div className="scrollbar-container order-last mb-10 mt-2 flex h-full w-full flex-col overflow-y-auto rounded-lg border-[1px] border-secondary-foreground bg-background_alt p-2 md:order-none md:mb-0 md:mr-2 md:mt-0 md:w-3/12">
         <Heading as="h3" className="my-2">
           Debug
         </Heading>
-        <div className="text-sm text-muted-foreground mb-5 space-y-3">
+        <div className="mb-5 space-y-3 text-sm text-muted-foreground">
           <p>
             Frigate uses your detectors{" "}
             {config
@@ -139,17 +142,17 @@ export default function ObjectSettings({
             <TabsTrigger value="objectlist">Object List</TabsTrigger>
           </TabsList>
           <TabsContent value="debug">
-            <div className="flex flex-col w-full space-y-6">
+            <div className="flex w-full flex-col space-y-6">
               <div className="mt-2 space-y-6">
                 <div className="my-2.5 flex flex-col gap-2.5">
                   {DEBUG_OPTIONS.map(({ param, title, description }) => (
                     <div
                       key={param}
-                      className="flex flex-row w-full justify-between items-center"
+                      className="flex w-full flex-row items-center justify-between"
                     >
-                      <div className="flex flex-col mb-2">
+                      <div className="mb-2 flex flex-col">
                         <Label
-                          className="w-full text-primary capitalize cursor-pointer mb-2"
+                          className="mb-2 w-full cursor-pointer capitalize text-primary"
                           htmlFor={param}
                         >
                           {title}
@@ -159,7 +162,7 @@ export default function ObjectSettings({
                         </div>
                       </div>
                       <Switch
-                        key={param}
+                        key={`${param}-${selectedCamera}`}
                         className="ml-1"
                         id={param}
                         checked={options && options[param]}
@@ -180,7 +183,7 @@ export default function ObjectSettings({
       </div>
 
       {cameraConfig ? (
-        <div className="flex md:w-7/12 md:grow md:h-dvh md:max-h-full">
+        <div className="flex md:h-dvh md:max-h-full md:w-7/12 md:grow">
           <div className="size-full min-h-10">
             <AutoUpdatingCameraImage
               camera={cameraConfig.name}
@@ -219,15 +222,15 @@ function ObjectList(objects?: ObjectType[]) {
   );
 
   return (
-    <div className="flex flex-col w-full overflow-y-auto">
+    <div className="scrollbar-container flex w-full flex-col overflow-y-auto">
       {objects && objects.length > 0 ? (
         objects.map((obj) => {
           return (
-            <Card className="text-sm p-2 mb-1" key={obj.id}>
+            <Card className="mb-1 p-2 text-sm" key={obj.id}>
               <div className="flex flex-row items-center gap-3 pb-1">
-                <div className="flex flex-row flex-1 items-center justify-start p-3 pl-1">
+                <div className="flex flex-1 flex-row items-center justify-start p-3 pl-1">
                   <div
-                    className="p-2 rounded-lg"
+                    className="rounded-lg p-2"
                     style={{
                       backgroundColor: obj.stationary
                         ? "rgb(110,110,110)"
@@ -240,10 +243,10 @@ function ObjectList(objects?: ObjectType[]) {
                     {capitalizeFirstLetter(obj.label)}
                   </div>
                 </div>
-                <div className="flex flex-row w-8/12 items-end justify-end">
-                  <div className="mr-2 text-md w-1/3">
+                <div className="flex w-8/12 flex-row items-end justify-end">
+                  <div className="text-md mr-2 w-1/3">
                     <div className="flex flex-col items-end justify-end">
-                      <p className="text-sm mb-1.5 text-primary-variant">
+                      <p className="mb-1.5 text-sm text-primary-variant">
                         Score
                       </p>
                       {obj.score
@@ -252,17 +255,17 @@ function ObjectList(objects?: ObjectType[]) {
                       %
                     </div>
                   </div>
-                  <div className="mr-2 text-md w-1/3">
+                  <div className="text-md mr-2 w-1/3">
                     <div className="flex flex-col items-end justify-end">
-                      <p className="text-sm mb-1.5 text-primary-variant">
+                      <p className="mb-1.5 text-sm text-primary-variant">
                         Ratio
                       </p>
                       {obj.ratio ? obj.ratio.toFixed(2).toString() : "-"}
                     </div>
                   </div>
-                  <div className="mr-2 text-md w-1/3">
+                  <div className="text-md mr-2 w-1/3">
                     <div className="flex flex-col items-end justify-end">
-                      <p className="text-sm mb-1.5 text-primary-variant">
+                      <p className="mb-1.5 text-sm text-primary-variant">
                         Area
                       </p>
                       {obj.area ? obj.area.toString() : "-"}

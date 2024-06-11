@@ -170,7 +170,7 @@ def stats_history():
 def config():
     config_obj: FrigateConfig = current_app.frigate_config
     config: dict[str, dict[str, any]] = config_obj.model_dump(
-        mode="json", warnings=False, exclude_none=True
+        mode="json", warnings=False, exclude_none=True # warnings="none"
     )
 
     # remove the mqtt password

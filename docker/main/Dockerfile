@@ -14,8 +14,19 @@ FROM ${SLIM_BASE} AS slim-base
 
 FROM slim-base AS wget
 ARG DEBIAN_FRONTEND
-RUN apt-get update \
-    && apt-get install -y wget xz-utils \
+#RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak
+#ADD sources.list /etc/apt/
+RUN \
+    sed -i s/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g /etc/apt/sources.list && \
+    sed -i 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn/|g' /etc/apt/sources.list && \
+    sed -i '/stretch-updates/d' /etc/apt/sources.list && \
+    # echo 'deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy main restricted universe multiverse\n \
+    #       deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy-updates main restricted universe multiverse\n \
+    #       deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy-backports main restricted universe multiverse\n \
+    #       deb https://security.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse\n' \
+    # > /etc/apt/sources.list && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 871920D1991BC93C && \
+    apt-get update \
+    && apt-get install -y wget xz-utils apt-utils gnupg \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /rootfs
 
@@ -53,7 +64,10 @@ ARG DEBIAN_FRONTEND
 
 # Install OpenVino Runtime and Dev library
 COPY docker/main/requirements-ov.txt /requirements-ov.txt
-RUN apt-get -qq update \
+RUN sed -i s/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g /etc/apt/sources.list && \
+    sed -i 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn/|g' /etc/apt/sources.list && \
+    sed -i '/stretch-updates/d' /etc/apt/sources.list && \
+    apt-get -qq update \
     && apt-get -qq install -y wget python3 python3-dev python3-distutils gcc pkg-config libhdf5-dev \
     && wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip" \
@@ -127,7 +141,10 @@ ARG DEBIAN_FRONTEND
 ARG TARGETARCH
 
 # Use a separate container to build wheels to prevent build dependencies in final image
-RUN apt-get -qq update \
+RUN sed -i s/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g /etc/apt/sources.list && \
+    sed -i 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn/|g' /etc/apt/sources.list && \
+    sed -i '/stretch-updates/d' /etc/apt/sources.list && \
+    apt-get -qq update \
     && apt-get -qq install -y \
     apt-transport-https \
     gnupg \

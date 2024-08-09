@@ -2,6 +2,10 @@
 
 set -euxo pipefail
 
+sed -i s/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g /etc/apt/sources.list && \
+sed -i 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn/|g' /etc/apt/sources.list && \
+sed -i '/stretch-updates/d' /etc/apt/sources.list && \
+
 apt-get -qq update
 
 apt-get -qq install --no-install-recommends -y \

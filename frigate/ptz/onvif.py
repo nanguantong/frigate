@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy
 from onvif import ONVIFCamera, ONVIFError
 from zeep.exceptions import Fault, TransportError
+from zeep.transports import Transport
 
 from frigate.config import FrigateConfig, ZoomingModeEnum
 from frigate.types import PTZMetricsTypes
@@ -45,6 +46,7 @@ class OnvifController:
 
             if cam.onvif.host:
                 try:
+                    transport = Transport(timeout=10, operation_timeout=10)
                     self.cams[cam_name] = {
                         "onvif": ONVIFCamera(
                             cam.onvif.host,
@@ -55,6 +57,7 @@ class OnvifController:
                                 Path(find_spec("onvif").origin).parent / "wsdl"
                             ).replace("dist-packages/onvif", "site-packages"),
                             adjust_time=cam.onvif.ignore_time_mismatch,
+                            transport=transport,
                         ),
                         "init": False,
                         "active": False,
@@ -332,6 +335,10 @@ class OnvifController:
             )
             self._stop(camera_name)
 
+        if "pt" not in self.cams[camera_name]["features"]:
+            logger.error(f"{camera_name} does not support ONVIF pan/tilt movement.")
+            return
+
         self.cams[camera_name]["active"] = True
         onvif: ONVIFCamera = self.cams[camera_name]["onvif"]
         move_request = self.cams[camera_name]["move_request"]
@@ -472,6 +479,10 @@ class OnvifController:
                 f"{camera_name} is already performing an action, stopping..."
             )
             self._stop(camera_name)
+
+        if "zoom" not in self.cams[camera_name]["features"]:
+            logger.error(f"{camera_name} does not support ONVIF zooming.")
+            return
 
         self.cams[camera_name]["active"] = True
         onvif: ONVIFCamera = self.cams[camera_name]["onvif"]

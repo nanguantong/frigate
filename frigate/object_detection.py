@@ -118,12 +118,14 @@ def run_detector(
         )
 
         if input_frame is None:
+            logger.warning(f"Failed to get frame {connection_id} from SHM")
             continue
 
         # detect and send the output
         start.value = datetime.datetime.now().timestamp()
         detections = object_detector.detect_raw(input_frame)
         duration = datetime.datetime.now().timestamp() - start.value
+        frame_manager.close(connection_id)
         outputs[connection_id]["np"][:] = detections[:]
         out_events[connection_id].set()
         start.value = 0.0

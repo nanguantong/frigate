@@ -165,6 +165,8 @@ RUN sed -i s/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g /etc/apt/sources.list
     gfortran openexr libatlas-base-dev libssl-dev\
     libtbb2 libtbb-dev libdc1394-22-dev libopenexr-dev \
     libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev \
+    # sqlite3 dependencies
+    tclsh \
     # scipy dependencies
     gcc gfortran libopenblas-dev liblapack-dev && \
     rm -rf /var/lib/apt/lists/*
@@ -178,8 +180,15 @@ RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
 COPY docker/main/requirements.txt /requirements.txt
 RUN pip3 install -r /requirements.txt
 
+# Build pysqlite3 from source to support ChromaDB
+COPY docker/main/build_pysqlite3.sh /build_pysqlite3.sh
+RUN /build_pysqlite3.sh
+
 COPY docker/main/requirements-wheels.txt /requirements-wheels.txt
 RUN pip3 wheel --wheel-dir=/wheels -r /requirements-wheels.txt
+
+COPY docker/main/requirements-wheels-post.txt /requirements-wheels-post.txt
+RUN pip3 wheel --no-deps --wheel-dir=/wheels-post -r /requirements-wheels-post.txt
 
 
 # Collect deps in a single layer
@@ -205,13 +214,29 @@ ARG APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES="compute,video,utility"
 
-ENV PATH="/usr/lib/btbn-ffmpeg/bin:/usr/local/go2rtc/bin:/usr/local/tempio/bin:/usr/local/nginx/sbin:${PATH}"
+# Turn off Chroma Telemetry: https://docs.trychroma.com/telemetry#opting-out
+ENV ANONYMIZED_TELEMETRY=False
+# Allow resetting the chroma database
+ENV ALLOW_RESET=True
+# Disable tokenizer parallelism warning
+ENV TOKENIZERS_PARALLELISM=true
+
+ENV PATH="/usr/local/go2rtc/bin:/usr/local/tempio/bin:/usr/local/nginx/sbin:${PATH}"
+ENV LIBAVFORMAT_VERSION_MAJOR=60
 
 # Install dependencies
 RUN --mount=type=bind,source=docker/main/install_deps.sh,target=/deps/install_deps.sh \
     /deps/install_deps.sh
 
 RUN --mount=type=bind,from=wheels,source=/wheels,target=/deps/wheels \
+    python3 -m pip install --upgrade pip && \
+    pip3 install -U /deps/wheels/*.whl
+
+# We have to uninstall this dependency specifically
+# as it will break onnxruntime-openvino
+RUN pip3 uninstall -y onnxruntime
+
+RUN --mount=type=bind,from=wheels,source=/wheels-post,target=/deps/wheels \
     python3 -m pip install --upgrade pip && \
     pip3 install -U /deps/wheels/*.whl
 

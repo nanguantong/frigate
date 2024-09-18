@@ -122,7 +122,7 @@ def get_cpu_stats() -> dict[str, dict]:
                 stats = f.readline().split()
             utime = int(stats[13])
             stime = int(stats[14])
-            starttime = int(stats[21])
+            start_time = int(stats[21])
 
             with open("/proc/uptime") as f:
                 system_uptime_sec = int(float(f.read().split()[0]))
@@ -131,9 +131,9 @@ def get_cpu_stats() -> dict[str, dict]:
 
             process_utime_sec = utime // clk_tck
             process_stime_sec = stime // clk_tck
-            process_starttime_sec = starttime // clk_tck
+            process_start_time_sec = start_time // clk_tck
 
-            process_elapsed_sec = system_uptime_sec - process_starttime_sec
+            process_elapsed_sec = system_uptime_sec - process_start_time_sec
             process_usage_sec = process_utime_sec + process_stime_sec
             cpu_average_usage = process_usage_sec * 100 // process_elapsed_sec
 
@@ -296,7 +296,7 @@ def get_intel_gpu_stats() -> dict[str, str]:
 
         # video is used for vaapi
         video = []
-        for result in re.findall('"Video/\d":{[a-z":\d.,%]+}', reading):
+        for result in re.findall(r'"Video/\d":{[a-z":\d.,%]+}', reading):
             packet = json.loads(result[10:])
             single = packet.get("busy", 0.0)
             video.append(float(single))
@@ -378,11 +378,11 @@ def get_jetson_stats() -> dict[int, dict]:
     return results
 
 
-def ffprobe_stream(path: str) -> sp.CompletedProcess:
+def ffprobe_stream(ffmpeg, path: str) -> sp.CompletedProcess:
     """Run ffprobe on stream."""
     clean_path = escape_special_characters(path)
     ffprobe_cmd = [
-        "ffprobe",
+        ffmpeg.ffprobe_path,
         "-timeout",
         "1000000",
         "-print_format",
@@ -438,7 +438,9 @@ def auto_detect_hwaccel() -> str:
     return ""
 
 
-async def get_video_properties(url, get_duration=False) -> dict[str, any]:
+async def get_video_properties(
+    ffmpeg, url: str, get_duration: bool = False
+) -> dict[str, any]:
     async def calculate_duration(video: Optional[any]) -> float:
         duration = None
 
@@ -453,7 +455,7 @@ async def get_video_properties(url, get_duration=False) -> dict[str, any]:
         # if cv2 failed need to use ffprobe
         if duration is None:
             p = await asyncio.create_subprocess_exec(
-                "ffprobe",
+                ffmpeg.ffprobe_path,
                 "-v",
                 "error",
                 "-show_entries",

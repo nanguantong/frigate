@@ -26,9 +26,6 @@ DETECTOR_KEY = "tensorrt"
 if TRT_SUPPORT:
 
     class TrtLogger(trt.ILogger):
-        def __init__(self):
-            trt.ILogger.__init__(self)
-
         def log(self, severity, msg):
             logger.log(self.getSeverity(severity), msg)
 
@@ -199,7 +196,7 @@ class TensorRtDetector(DetectionApi):
 
         # Run inference.
         if not self._execute():
-            logger.warn("Execute returned false")
+            logger.warning("Execute returned false")
 
         # Transfer predictions back from the GPU.
         [

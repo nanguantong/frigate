@@ -54,8 +54,7 @@ class EventProcessor(threading.Thread):
         timeline_queue: Queue,
         stop_event: MpEvent,
     ):
-        threading.Thread.__init__(self)
-        self.name = "event_processor"
+        super().__init__(name="event_processor")
         self.config = config
         self.timeline_queue = timeline_queue
         self.events_in_process: Dict[str, Event] = {}
@@ -125,6 +124,9 @@ class EventProcessor(threading.Thread):
         updated_db = False
 
         # if this is the first message, just store it and continue, its not time to insert it in the db
+        if event_type == EventStateEnum.start:
+            self.events_in_process[event_data["id"]] = event_data
+
         if should_update_db(self.events_in_process[event_data["id"]], event_data):
             updated_db = True
             camera_config = self.config.cameras[camera]
@@ -163,11 +165,11 @@ class EventProcessor(threading.Thread):
                 )
             )
 
-            attributes = [
-                (
-                    None
-                    if event_data["snapshot"] is None
-                    else {
+            attributes = (
+                None
+                if event_data["snapshot"] is None
+                else [
+                    {
                         "box": to_relative_box(
                             width,
                             height,
@@ -176,9 +178,9 @@ class EventProcessor(threading.Thread):
                         "label": a["label"],
                         "score": a["score"],
                     }
-                )
-                for a in event_data["snapshot"]["attributes"]
-            ]
+                    for a in event_data["snapshot"]["attributes"]
+                ]
+            )
 
             # keep these from being set back to false because the event
             # may have started while recordings and snapshots were enabled

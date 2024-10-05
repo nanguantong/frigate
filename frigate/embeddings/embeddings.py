@@ -43,7 +43,7 @@ def get_metadata(event: Event) -> dict:
         {
             k: v
             for k, v in event_dict.items()
-            if k not in ["id", "thumbnail"]
+            if k not in ["thumbnail"]
             and v is not None
             and isinstance(v, (str, int, float, bool))
         }
@@ -126,9 +126,9 @@ class Embeddings:
                 thumbnails["ids"].append(event.id)
                 thumbnails["images"].append(img)
                 thumbnails["metadatas"].append(metadata)
-                if event.data.get("description") is not None:
+                if description := event.data.get("description", "").strip():
                     descriptions["ids"].append(event.id)
-                    descriptions["documents"].append(event.data["description"])
+                    descriptions["documents"].append(description)
                     descriptions["metadatas"].append(metadata)
 
             if len(thumbnails["ids"]) > 0:

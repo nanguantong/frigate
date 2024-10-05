@@ -17,6 +17,7 @@ apt-get -qq install --no-install-recommends -y \
     python3.9 \
     python3-pip \
     curl \
+    lsof \
     jq \
     nethogs
 
@@ -44,35 +45,34 @@ apt-get -qq install --no-install-recommends --no-install-suggests -y \
 # btbn-ffmpeg -> amd64
 if [[ "${TARGETARCH}" == "amd64" ]]; then
     mkdir -p /usr/lib/ffmpeg/5.0
-    mkdir -p /usr/lib/ffmpeg/6.0
+    mkdir -p /usr/lib/ffmpeg/7.0
     wget -qO btbn-ffmpeg.tar.xz "https://github.com/NickM-27/FFmpeg-Builds/releases/download/autobuild-2022-07-31-12-37/ffmpeg-n5.1-2-g915ef932a3-linux64-gpl-5.1.tar.xz"
     tar -xf btbn-ffmpeg.tar.xz -C /usr/lib/ffmpeg/5.0 --strip-components 1
     rm -rf btbn-ffmpeg.tar.xz /usr/lib/ffmpeg/5.0/doc /usr/lib/ffmpeg/5.0/bin/ffplay
-    wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2024-08-31-12-50/ffmpeg-n6.1.2-2-gb534cc666e-linux64-gpl-6.1.tar.xz"
-    tar -xf btbn-ffmpeg.tar.xz -C /usr/lib/ffmpeg/6.0 --strip-components 1
-    rm -rf btbn-ffmpeg.tar.xz /usr/lib/ffmpeg/6.0/doc /usr/lib/ffmpeg/6.0/bin/ffplay
+    wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2024-09-30-15-36/ffmpeg-n7.1-linux64-gpl-7.1.tar.xz"
+    tar -xf btbn-ffmpeg.tar.xz -C /usr/lib/ffmpeg/7.0 --strip-components 1
+    rm -rf btbn-ffmpeg.tar.xz /usr/lib/ffmpeg/7.0/doc /usr/lib/ffmpeg/7.0/bin/ffplay
 fi
 
 # ffmpeg -> arm64
 if [[ "${TARGETARCH}" == "arm64" ]]; then
     mkdir -p /usr/lib/ffmpeg/5.0
-    mkdir -p /usr/lib/ffmpeg/6.0
+    mkdir -p /usr/lib/ffmpeg/7.0
     wget -qO btbn-ffmpeg.tar.xz "https://github.com/NickM-27/FFmpeg-Builds/releases/download/autobuild-2022-07-31-12-37/ffmpeg-n5.1-2-g915ef932a3-linuxarm64-gpl-5.1.tar.xz"
     tar -xf btbn-ffmpeg.tar.xz -C /usr/lib/ffmpeg/5.0 --strip-components 1
     rm -rf btbn-ffmpeg.tar.xz /usr/lib/ffmpeg/5.0/doc /usr/lib/ffmpeg/5.0/bin/ffplay
-    wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2024-08-31-12-50/ffmpeg-n6.1.2-2-gb534cc666e-linuxarm64-gpl-6.1.tar.xz"
-    tar -xf btbn-ffmpeg.tar.xz -C /usr/lib/ffmpeg/6.0 --strip-components 1
-    rm -rf btbn-ffmpeg.tar.xz /usr/lib/ffmpeg/6.0/doc /usr/lib/ffmpeg/6.0/bin/ffplay
+    wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2024-09-30-15-36/ffmpeg-n7.1-linuxarm64-gpl-7.1.tar.xz"
+    tar -xf btbn-ffmpeg.tar.xz -C /usr/lib/ffmpeg/7.0 --strip-components 1
+    rm -rf btbn-ffmpeg.tar.xz /usr/lib/ffmpeg/7.0/doc /usr/lib/ffmpeg/7.0/bin/ffplay
 fi
 
 # arch specific packages
 if [[ "${TARGETARCH}" == "amd64" ]]; then
-    # use debian bookworm for hwaccel packages
+    # use debian bookworm for amd / intel-i965 driver packages
     echo 'deb https://deb.debian.org/debian bookworm main contrib non-free' >/etc/apt/sources.list.d/debian-bookworm.list
     apt-get -qq update
     apt-get -qq install --no-install-recommends --no-install-suggests -y \
-        intel-opencl-icd intel-media-va-driver-non-free i965-va-driver \
-        libmfx-gen1.2 libmfx1 onevpl-tools intel-gpu-tools \
+        i965-va-driver intel-gpu-tools onevpl-tools \
         libva-drm2 \
         mesa-va-drivers radeontop
 
@@ -81,11 +81,22 @@ if [[ "${TARGETARCH}" == "amd64" ]]; then
         i965-va-driver-shaders
 
     rm -f /etc/apt/sources.list.d/debian-bookworm.list
+
+    # use intel apt intel packages
+    wget -qO - https://repositories.intel.com/gpu/intel-graphics.key | gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu jammy client" | tee /etc/apt/sources.list.d/intel-gpu-jammy.list
+    apt-get -qq update
+    apt-get -qq install --no-install-recommends --no-install-suggests -y \
+        intel-opencl-icd intel-level-zero-gpu intel-media-va-driver-non-free \
+        libmfx1 libmfxgen1 libvpl2
+
+    rm -f /usr/share/keyrings/intel-graphics.gpg
+    rm -f /etc/apt/sources.list.d/intel-gpu-jammy.list
 fi
 
 if [[ "${TARGETARCH}" == "arm64" ]]; then
     apt-get -qq install --no-install-recommends --no-install-suggests -y \
-        libva-drm2 mesa-va-drivers
+        libva-drm2 mesa-va-drivers radeontop
 fi
 
 # install vulkan

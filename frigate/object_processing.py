@@ -25,7 +25,7 @@ from frigate.config import (
     SnapshotsConfig,
     ZoomingModeEnum,
 )
-from frigate.const import ALL_ATTRIBUTE_LABELS, CLIPS_DIR, UPDATE_CAMERA_ACTIVITY
+from frigate.const import CLIPS_DIR, UPDATE_CAMERA_ACTIVITY
 from frigate.events.types import EventStateEnum, EventTypeEnum
 from frigate.ptz.autotrack import PtzAutoTrackerThread
 from frigate.util.image import (
@@ -108,7 +108,12 @@ def is_better_thumbnail(label, current_thumb, new_obj, frame_shape) -> bool:
 
 class TrackedObject:
     def __init__(
-        self, camera, colormap, camera_config: CameraConfig, frame_cache, obj_data
+        self,
+        camera,
+        colormap,
+        camera_config: CameraConfig,
+        frame_cache,
+        obj_data: dict[str, any],
     ):
         # set the score history then remove as it is not part of object state
         self.score_history = obj_data["score_history"]
@@ -227,8 +232,8 @@ class TrackedObject:
             if self.attributes[attr["label"]] < attr["score"]:
                 self.attributes[attr["label"]] = attr["score"]
 
-        # populate the sub_label for car with highest scoring logo
-        if self.obj_data["label"] == "car":
+        # populate the sub_label for object with highest scoring logo
+        if self.obj_data["label"] in ["car", "package", "person"]:
             recognized_logos = {
                 k: self.attributes[k]
                 for k in ["ups", "fedex", "amazon"]
@@ -236,7 +241,13 @@ class TrackedObject:
             }
             if len(recognized_logos) > 0:
                 max_logo = max(recognized_logos, key=recognized_logos.get)
-                self.obj_data["sub_label"] = (max_logo, recognized_logos[max_logo])
+
+                # don't overwrite sub label if it is already set
+                if (
+                    self.obj_data.get("sub_label") is None
+                    or self.obj_data["sub_label"][0] == max_logo
+                ):
+                    self.obj_data["sub_label"] = (max_logo, recognized_logos[max_logo])
 
         # check for significant change
         if not self.false_positive:
@@ -752,7 +763,10 @@ class CameraState:
                 sub_label = None
 
                 if obj.obj_data.get("sub_label"):
-                    if obj.obj_data.get("sub_label")[0] in ALL_ATTRIBUTE_LABELS:
+                    if (
+                        obj.obj_data.get("sub_label")[0]
+                        in self.config.model.all_attributes
+                    ):
                         label = obj.obj_data["sub_label"][0]
                     else:
                         label = f"{object_type}-verified"
@@ -918,8 +932,7 @@ class TrackedObjectProcessor(threading.Thread):
         ptz_autotracker_thread,
         stop_event,
     ):
-        threading.Thread.__init__(self)
-        self.name = "detected_frames_processor"
+        super().__init__(name="detected_frames_processor")
         self.config = config
         self.dispatcher = dispatcher
         self.tracked_objects_queue = tracked_objects_queue

@@ -138,6 +138,16 @@ model:
   # Optional: Label name modifications. These are merged into the standard labelmap.
   labelmap:
     2: vehicle
+  # Optional: Map of object labels to their attribute labels (default: depends on model)
+  attributes_map:
+    person:
+      - amazon
+      - face
+    car:
+      - amazon
+      - fedex
+      - license_plate
+      - ups
 
 # Optional: Audio Events Configuration
 # NOTE: Can be overridden at the camera level
@@ -716,6 +726,8 @@ cameras:
     genai:
       # Optional: Enable AI description generation (default: shown below)
       enabled: False
+      # Optional: Use the object snapshot instead of thumbnails for description generation (default: shown below)
+      use_snapshot: False
       # Optional: The default prompt for generating descriptions. Can use replacement
       # variables like "label", "sub_label", "camera" to make more dynamic. (default: shown below)
       prompt: "Describe the {label} in the sequence of images with as much detail as possible. Do not describe the background."
@@ -723,6 +735,12 @@ cameras:
       # Format: {label}: {prompt}
       object_prompts:
         person: "My special person prompt."
+      # Optional: objects to generate descriptions for (default: all objects that are tracked)
+      objects:
+        - person
+        - cat
+      # Optional: Restrict generation to objects that entered any of the listed zones (default: none, all zones qualify)
+      required_zones: []
 
 # Optional
 ui:

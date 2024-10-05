@@ -15,12 +15,18 @@ import { SearchResult } from "@/types/search";
 import ImageLoadingIndicator from "@/components/indicators/ImageLoadingIndicator";
 import useImageLoaded from "@/hooks/use-image-loaded";
 import ActivityIndicator from "@/components/indicators/activity-indicator";
+import { useEventUpdate } from "@/api/ws";
+import { isEqual } from "lodash";
 
 type ExploreViewProps = {
-  onSelectSearch: (searchResult: SearchResult, index: number) => void;
+  searchDetail: SearchResult | undefined;
+  setSearchDetail: (search: SearchResult | undefined) => void;
 };
 
-export default function ExploreView({ onSelectSearch }: ExploreViewProps) {
+export default function ExploreView({
+  searchDetail,
+  setSearchDetail,
+}: ExploreViewProps) {
   // title
 
   useEffect(() => {
@@ -29,7 +35,12 @@ export default function ExploreView({ onSelectSearch }: ExploreViewProps) {
 
   // data
 
-  const { data: events } = useSWR<SearchResult[]>(
+  const {
+    data: events,
+    mutate,
+    isLoading,
+    isValidating,
+  } = useSWR<SearchResult[]>(
     [
       "events/explore",
       {
@@ -37,7 +48,7 @@ export default function ExploreView({ onSelectSearch }: ExploreViewProps) {
       },
     ],
     {
-      revalidateOnFocus: false,
+      revalidateOnFocus: true,
     },
   );
 
@@ -53,7 +64,29 @@ export default function ExploreView({ onSelectSearch }: ExploreViewProps) {
     }, {});
   }, [events]);
 
-  if (!events) {
+  const eventUpdate = useEventUpdate();
+
+  useEffect(() => {
+    mutate();
+    // mutate / revalidate when event description updates come in
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventUpdate]);
+
+  // update search detail when results change
+
+  useEffect(() => {
+    if (searchDetail && events) {
+      const updatedSearchDetail = events.find(
+        (result) => result.id === searchDetail.id,
+      );
+
+      if (updatedSearchDetail && !isEqual(updatedSearchDetail, searchDetail)) {
+        setSearchDetail(updatedSearchDetail);
+      }
+    }
+  }, [events, searchDetail, setSearchDetail]);
+
+  if (isLoading) {
     return (
       <ActivityIndicator className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
     );
@@ -65,8 +98,9 @@ export default function ExploreView({ onSelectSearch }: ExploreViewProps) {
         <ThumbnailRow
           key={label}
           searchResults={filteredEvents}
+          isValidating={isValidating}
           objectType={label}
-          onSelectSearch={onSelectSearch}
+          setSearchDetail={setSearchDetail}
         />
       ))}
     </div>
@@ -76,13 +110,15 @@ export default function ExploreView({ onSelectSearch }: ExploreViewProps) {
 type ThumbnailRowType = {
   objectType: string;
   searchResults?: SearchResult[];
-  onSelectSearch: (searchResult: SearchResult, index: number) => void;
+  isValidating: boolean;
+  setSearchDetail: (search: SearchResult | undefined) => void;
 };
 
 function ThumbnailRow({
   objectType,
   searchResults,
-  onSelectSearch,
+  isValidating,
+  setSearchDetail,
 }: ThumbnailRowType) {
   const navigate = useNavigate();
 
@@ -95,7 +131,7 @@ function ThumbnailRow({
 
   return (
     <div className="rounded-lg bg-background_alt p-2 md:px-4">
-      <div className="text-lg capitalize">
+      <div className="flex flex-row items-center text-lg capitalize">
         {objectType.replaceAll("_", " ")}
         {searchResults && (
           <span className="ml-3 text-sm text-secondary-foreground">
@@ -107,6 +143,7 @@ function ThumbnailRow({
             tracked objects){" "}
           </span>
         )}
+        {isValidating && <ActivityIndicator className="ml-2 size-4" />}
       </div>
       <div className="flex flex-row items-center space-x-2 py-2">
         {searchResults?.map((event) => (
@@ -116,7 +153,7 @@ function ThumbnailRow({
           >
             <ExploreThumbnailImage
               event={event}
-              onSelectSearch={onSelectSearch}
+              setSearchDetail={setSearchDetail}
             />
           </div>
         ))}
@@ -145,11 +182,11 @@ function ThumbnailRow({
 
 type ExploreThumbnailImageProps = {
   event: SearchResult;
-  onSelectSearch: (searchResult: SearchResult, index: number) => void;
+  setSearchDetail: (search: SearchResult | undefined) => void;
 };
 function ExploreThumbnailImage({
   event,
-  onSelectSearch,
+  setSearchDetail,
 }: ExploreThumbnailImageProps) {
   const apiHost = useApiHost();
   const [imgRef, imgLoaded, onImgLoad] = useImageLoaded();
@@ -163,7 +200,7 @@ function ExploreThumbnailImage({
       <img
         ref={imgRef}
         className={cn(
-          "absolute h-full w-full cursor-pointer rounded-lg object-cover transition-all duration-300 ease-in-out md:rounded-2xl",
+          "absolute h-full w-full cursor-pointer rounded-lg object-cover transition-all duration-300 ease-in-out lg:rounded-2xl",
         )}
         style={
           isIOS
@@ -176,7 +213,7 @@ function ExploreThumbnailImage({
         loading={isSafari ? "eager" : "lazy"}
         draggable={false}
         src={`${apiHost}api/events/${event.id}/thumbnail.jpg`}
-        onClick={() => onSelectSearch(event, 0)}
+        onClick={() => setSearchDetail(event)}
         onLoad={() => {
           onImgLoad();
         }}

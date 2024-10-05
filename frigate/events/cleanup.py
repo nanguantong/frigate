@@ -23,8 +23,7 @@ class EventCleanupType(str, Enum):
 
 class EventCleanup(threading.Thread):
     def __init__(self, config: FrigateConfig, stop_event: MpEvent):
-        threading.Thread.__init__(self)
-        self.name = "event_cleanup"
+        super().__init__(name="event_cleanup")
         self.config = config
         self.stop_event = stop_event
         self.camera_keys = list(self.config.cameras.keys())
@@ -230,7 +229,15 @@ class EventCleanup(threading.Thread):
                     Event.delete().where(Event.id << chunk).execute()
 
                     if self.config.semantic_search.enabled:
-                        self.embeddings.thumbnail.delete(ids=chunk)
-                        self.embeddings.description.delete(ids=chunk)
+                        for collection in [
+                            self.embeddings.thumbnail,
+                            self.embeddings.description,
+                        ]:
+                            existing_ids = collection.get(ids=chunk, include=[])["ids"]
+                            if existing_ids:
+                                collection.delete(ids=existing_ids)
+                                logger.debug(
+                                    f"Deleted {len(existing_ids)} embeddings from {collection.__class__.__name__}"
+                                )
 
         logger.info("Exiting event cleanup...")

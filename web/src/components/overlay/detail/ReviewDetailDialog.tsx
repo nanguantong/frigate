@@ -37,6 +37,7 @@ import {
   MobilePageHeader,
   MobilePageTitle,
 } from "@/components/mobile/MobilePage";
+import { useOverlayState } from "@/hooks/use-overlay-state";
 
 type ReviewDetailDialogProps = {
   review?: ReviewSegment;
@@ -83,10 +84,15 @@ export default function ReviewDetailDialog({
 
   // dialog and mobile page
 
-  const [isOpen, setIsOpen] = useState(review != undefined);
+  const [isOpen, setIsOpen] = useOverlayState(
+    "reviewPane",
+    review != undefined,
+  );
 
   useEffect(() => {
     setIsOpen(review != undefined);
+    // we know that these deps are correct
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [review]);
 
   const Overlay = isDesktop ? Sheet : MobilePage;
@@ -102,7 +108,7 @@ export default function ReviewDetailDialog({
   return (
     <>
       <Overlay
-        open={isOpen}
+        open={isOpen ?? false}
         onOpenChange={(open) => {
           if (!open) {
             setReview(undefined);
@@ -234,7 +240,7 @@ export default function ReviewDetailDialog({
           )}
 
           {pane == "details" && selectedEvent && (
-            <div className="scrollbar-container overflow-x-none mt-0 flex size-full flex-col gap-2 overflow-y-auto overflow-x-hidden">
+            <div className="mt-0 flex size-full flex-col gap-2">
               <ObjectLifecycle event={selectedEvent} setPane={setPane} />
             </div>
           )}
@@ -370,7 +376,9 @@ function EventItem({
                     <Chip
                       className="cursor-pointer rounded-md bg-gray-500 bg-gradient-to-br from-gray-400 to-gray-500"
                       onClick={() => {
-                        navigate(`/explore?similarity_search_id=${event.id}`);
+                        navigate(
+                          `/explore?search_type=similarity&event_id=${event.id}`,
+                        );
                       }}
                     >
                       <FaImages className="size-4 text-white" />

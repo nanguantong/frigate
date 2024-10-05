@@ -123,6 +123,23 @@ export default function HlsVideoPlayer({
     videoRef.current.playbackRate = currentPlaybackRate;
   }, [videoRef, hlsRef, useHlsCompat, currentSource]);
 
+  // state handling
+
+  const onPlayPause = useCallback(
+    (play: boolean) => {
+      if (!videoRef.current) {
+        return;
+      }
+
+      if (play) {
+        videoRef.current.play();
+      } else {
+        videoRef.current.pause();
+      }
+    },
+    [videoRef],
+  );
+
   // controls
 
   const [tallCamera, setTallCamera] = useState(false);
@@ -137,6 +154,7 @@ export default function HlsVideoPlayer({
   const [mobileCtrlTimeout, setMobileCtrlTimeout] = useState<NodeJS.Timeout>();
   const [controls, setControls] = useState(isMobile);
   const [controlsOpen, setControlsOpen] = useState(false);
+  const [zoomScale, setZoomScale] = useState(1.0);
 
   useEffect(() => {
     if (!isDesktop) {
@@ -168,7 +186,11 @@ export default function HlsVideoPlayer({
   }, [videoRef, controlsOpen]);
 
   return (
-    <TransformWrapper minScale={1.0} wheel={{ smoothStep: 0.005 }}>
+    <TransformWrapper
+      minScale={1.0}
+      wheel={{ smoothStep: 0.005 }}
+      onZoom={(zoom) => setZoomScale(zoom.state.scale)}
+    >
       {frigateControls && (
         <VideoControls
           className={cn(
@@ -191,17 +213,7 @@ export default function HlsVideoPlayer({
           setMuted={(muted) => setMuted(muted, true)}
           playbackRate={playbackRate ?? 1}
           hotKeys={hotKeys}
-          onPlayPause={(play) => {
-            if (!videoRef.current) {
-              return;
-            }
-
-            if (play) {
-              videoRef.current.play();
-            } else {
-              videoRef.current.pause();
-            }
-          }}
+          onPlayPause={onPlayPause}
           onSeek={(diff) => {
             const currentTime = videoRef.current?.currentTime;
 
@@ -254,12 +266,19 @@ export default function HlsVideoPlayer({
       >
         <video
           ref={videoRef}
-          className={`size-full rounded-lg bg-black md:rounded-2xl ${loadedMetadata ? "" : "invisible"}`}
+          className={`size-full rounded-lg bg-black md:rounded-2xl ${loadedMetadata ? "" : "invisible"} cursor-pointer`}
           preload="auto"
           autoPlay
           controls={!frigateControls}
           playsInline
           muted={muted}
+          onClick={
+            isDesktop
+              ? () => {
+                  if (zoomScale == 1.0) onPlayPause(!isPlaying);
+                }
+              : undefined
+          }
           onVolumeChange={() =>
             setVolume(videoRef.current?.volume ?? 1.0, true)
           }

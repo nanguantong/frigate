@@ -27,7 +27,13 @@ import { baseUrl } from "@/api/baseUrl";
 import { cn } from "@/lib/utils";
 import ActivityIndicator from "@/components/indicators/activity-indicator";
 import { ASPECT_VERTICAL_LAYOUT, ASPECT_WIDE_LAYOUT } from "@/types/record";
-import { FaHistory, FaImage, FaRegListAlt, FaVideo } from "react-icons/fa";
+import {
+  FaChevronDown,
+  FaHistory,
+  FaImage,
+  FaRegListAlt,
+  FaVideo,
+} from "react-icons/fa";
 import { FaRotate } from "react-icons/fa6";
 import ObjectLifecycle from "./ObjectLifecycle";
 import {
@@ -45,6 +51,14 @@ import {
 import { ReviewSegment } from "@/types/review";
 import { useNavigate } from "react-router-dom";
 import Chip from "@/components/indicators/Chip";
+import { capitalizeAll } from "@/utils/stringUtil";
+import useGlobalMutation from "@/hooks/use-global-mutate";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const SEARCH_TABS = [
   "details",
@@ -90,6 +104,11 @@ export default function SearchDetailDialog({
 
     if (!search.has_snapshot) {
       const index = views.indexOf("snapshot");
+      views.splice(index, 1);
+    }
+
+    if (search.data.type != "object") {
+      const index = views.indexOf("object lifecycle");
       views.splice(index, 1);
     }
 
@@ -232,6 +251,10 @@ function ObjectDetailsTab({
 }: ObjectDetailsTabProps) {
   const apiHost = useApiHost();
 
+  // mutation / revalidation
+
+  const mutate = useGlobalMutation();
+
   // data
 
   const [desc, setDesc] = useState(search?.data.description);
@@ -282,6 +305,13 @@ function ObjectDetailsTab({
             position: "top-center",
           });
         }
+        mutate(
+          (key) =>
+            typeof key === "string" &&
+            (key.includes("events") ||
+              key.includes("events/search") ||
+              key.includes("events/explore")),
+        );
       })
       .catch(() => {
         toast.error("Failed to update the description", {
@@ -289,7 +319,38 @@ function ObjectDetailsTab({
         });
         setDesc(search.data.description);
       });
-  }, [desc, search]);
+  }, [desc, search, mutate]);
+
+  const regenerateDescription = useCallback(
+    (source: "snapshot" | "thumbnails") => {
+      if (!search) {
+        return;
+      }
+
+      axios
+        .put(`events/${search.id}/description/regenerate?source=${source}`)
+        .then((resp) => {
+          if (resp.status == 200) {
+            toast.success(
+              `A new description has been requested from ${capitalizeAll(config?.genai.provider.replaceAll("_", " ") ?? "Generative AI")}. Depending on the speed of your provider, the new description may take some time to regenerate.`,
+              {
+                position: "top-center",
+                duration: 7000,
+              },
+            );
+          }
+        })
+        .catch(() => {
+          toast.error(
+            `Failed to call ${capitalizeAll(config?.genai.provider.replaceAll("_", " ") ?? "Generative AI")} for a new description`,
+            {
+              position: "top-center",
+            },
+          );
+        });
+    },
+    [search, config],
+  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -355,7 +416,40 @@ function ObjectDetailsTab({
           value={desc}
           onChange={(e) => setDesc(e.target.value)}
         />
-        <div className="flex w-full flex-row justify-end">
+        <div className="flex w-full flex-row justify-end gap-2">
+          {config?.genai.enabled && (
+            <div className="flex items-center">
+              <Button
+                className="rounded-r-none border-r-0"
+                onClick={() => regenerateDescription("thumbnails")}
+              >
+                Regenerate
+              </Button>
+              {search.has_snapshot && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button className="rounded-l-none border-l-0 px-2">
+                      <FaChevronDown className="size-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      onClick={() => regenerateDescription("snapshot")}
+                    >
+                      Regenerate from Snapshot
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      onClick={() => regenerateDescription("thumbnails")}
+                    >
+                      Regenerate from Thumbnails
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          )}
           <Button variant="select" onClick={updateDescription}>
             Save
           </Button>

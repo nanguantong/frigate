@@ -1,4 +1,4 @@
-import { isDesktop, isIOS, isMobile } from "react-device-detect";
+import { isDesktop, isIOS, isMobile, isSafari } from "react-device-detect";
 import { SearchResult } from "@/types/search";
 import useSWR from "swr";
 import { FrigateConfig } from "@/types/frigateConfig";
@@ -20,14 +20,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FrigatePlusDialog } from "../dialog/FrigatePlusDialog";
 import { Event } from "@/types/event";
 import HlsVideoPlayer from "@/components/player/HlsVideoPlayer";
 import { baseUrl } from "@/api/baseUrl";
 import { cn } from "@/lib/utils";
 import ActivityIndicator from "@/components/indicators/activity-indicator";
-import { ASPECT_VERTICAL_LAYOUT, ASPECT_WIDE_LAYOUT } from "@/types/record";
 import {
+  FaCheckCircle,
   FaChevronDown,
   FaHistory,
   FaImage,
@@ -59,6 +58,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
+import { Card, CardContent } from "@/components/ui/card";
+import useImageLoaded from "@/hooks/use-image-loaded";
+import ImageLoadingIndicator from "@/components/indicators/ImageLoadingIndicator";
+import { useResizeObserver } from "@/hooks/resize-observer";
+import { VideoResolutionType } from "@/types/live";
 
 const SEARCH_TABS = [
   "details",
@@ -209,21 +214,19 @@ export default function SearchDetailDialog({
           />
         )}
         {page == "snapshot" && (
-          <FrigatePlusDialog
-            upload={
+          <ObjectSnapshotTab
+            search={
               {
                 ...search,
                 plus_id: config?.plus?.enabled ? search.plus_id : "not_enabled",
               } as unknown as Event
             }
-            dialog={false}
-            onClose={() => {}}
             onEventUploaded={() => {
               search.plus_id = "new_upload";
             }}
           />
         )}
-        {page == "video" && <VideoTab search={search} config={config} />}
+        {page == "video" && <VideoTab search={search} />}
         {page == "object lifecycle" && (
           <ObjectLifecycle
             className="w-full overflow-x-hidden"
@@ -459,11 +462,142 @@ function ObjectDetailsTab({
   );
 }
 
+type ObjectSnapshotTabProps = {
+  search: Event;
+  onEventUploaded: () => void;
+};
+function ObjectSnapshotTab({
+  search,
+  onEventUploaded,
+}: ObjectSnapshotTabProps) {
+  type SubmissionState = "reviewing" | "uploading" | "submitted";
+
+  const [imgRef, imgLoaded, onImgLoad] = useImageLoaded();
+
+  // upload
+
+  const [state, setState] = useState<SubmissionState>(
+    search?.plus_id ? "submitted" : "reviewing",
+  );
+
+  useEffect(
+    () => setState(search?.plus_id ? "submitted" : "reviewing"),
+    [search],
+  );
+
+  const onSubmitToPlus = useCallback(
+    async (falsePositive: boolean) => {
+      if (!search) {
+        return;
+      }
+
+      falsePositive
+        ? axios.put(`events/${search.id}/false_positive`)
+        : axios.post(`events/${search.id}/plus`, {
+            include_annotation: 1,
+          });
+
+      setState("submitted");
+      onEventUploaded();
+    },
+    [search, onEventUploaded],
+  );
+
+  return (
+    <div className="relative size-full">
+      <ImageLoadingIndicator
+        className="absolute inset-0 aspect-video min-h-[60dvh] w-full"
+        imgLoaded={imgLoaded}
+      />
+      <div className={`${imgLoaded ? "visible" : "invisible"}`}>
+        <TransformWrapper minScale={1.0} wheel={{ smoothStep: 0.005 }}>
+          <div className="flex flex-col space-y-3">
+            <TransformComponent
+              wrapperStyle={{
+                width: "100%",
+                height: "100%",
+              }}
+              contentStyle={{
+                position: "relative",
+                width: "100%",
+                height: "100%",
+              }}
+            >
+              {search?.id && (
+                <img
+                  ref={imgRef}
+                  className={`mx-auto max-h-[60dvh] bg-black object-contain`}
+                  src={`${baseUrl}api/events/${search?.id}/snapshot.jpg`}
+                  alt={`${search?.label}`}
+                  loading={isSafari ? "eager" : "lazy"}
+                  onLoad={() => {
+                    onImgLoad();
+                  }}
+                />
+              )}
+            </TransformComponent>
+            <Card className="p-1 text-sm md:p-2">
+              <CardContent className="flex flex-col items-center justify-between gap-3 p-2 md:flex-row">
+                <div className={cn("flex flex-col space-y-3")}>
+                  <div
+                    className={
+                      "text-lg font-semibold leading-none tracking-tight"
+                    }
+                  >
+                    Submit To Frigate+
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Objects in locations you want to avoid are not false
+                    positives. Submitting them as false positives will confuse
+                    the model.
+                  </div>
+                </div>
+
+                <div className="flex flex-row justify-center gap-2 md:justify-end">
+                  {state == "reviewing" && (
+                    <>
+                      <Button
+                        className="bg-success"
+                        onClick={() => {
+                          setState("uploading");
+                          onSubmitToPlus(false);
+                        }}
+                      >
+                        This is a {search?.label}
+                      </Button>
+                      <Button
+                        className="text-white"
+                        variant="destructive"
+                        onClick={() => {
+                          setState("uploading");
+                          onSubmitToPlus(true);
+                        }}
+                      >
+                        This is not a {search?.label}
+                      </Button>
+                    </>
+                  )}
+                  {state == "uploading" && <ActivityIndicator />}
+                  {state == "submitted" && (
+                    <div className="flex flex-row items-center justify-center gap-2">
+                      <FaCheckCircle className="text-success" />
+                      Submitted
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TransformWrapper>
+      </div>
+    </div>
+  );
+}
+
 type VideoTabProps = {
   search: SearchResult;
-  config?: FrigateConfig;
 };
-function VideoTab({ search, config }: VideoTabProps) {
+function VideoTab({ search }: VideoTabProps) {
   const [isLoading, setIsLoading] = useState(true);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -474,61 +608,48 @@ function VideoTab({ search, config }: VideoTabProps) {
     `review/event/${search.id}`,
   ]);
 
-  const mainCameraAspect = useMemo(() => {
-    const camera = config?.cameras?.[search.camera];
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
-    if (!camera) {
-      return "normal";
-    }
+  const [{ width: containerWidth, height: containerHeight }] =
+    useResizeObserver(containerRef);
+  const [videoResolution, setVideoResolution] = useState<VideoResolutionType>({
+    width: 0,
+    height: 0,
+  });
 
-    const aspectRatio = camera.detect.width / camera.detect.height;
+  const videoAspectRatio = useMemo(() => {
+    return videoResolution.width / videoResolution.height || 16 / 9;
+  }, [videoResolution]);
 
-    if (!aspectRatio) {
-      return "normal";
-    } else if (aspectRatio > ASPECT_WIDE_LAYOUT) {
-      return "wide";
-    } else if (aspectRatio < ASPECT_VERTICAL_LAYOUT) {
-      return "tall";
+  const containerAspectRatio = useMemo(() => {
+    return containerWidth / containerHeight || 16 / 9;
+  }, [containerWidth, containerHeight]);
+
+  const videoDimensions = useMemo(() => {
+    if (!containerWidth || !containerHeight)
+      return { width: "100%", height: "100%" };
+
+    if (containerAspectRatio > videoAspectRatio) {
+      const height = containerHeight;
+      const width = height * videoAspectRatio;
+      return { width: `${width}px`, height: `${height}px` };
     } else {
-      return "normal";
+      const width = containerWidth;
+      const height = width / videoAspectRatio;
+      return { width: `${width}px`, height: `${height}px` };
     }
-  }, [config, search]);
-
-  const containerClassName = useMemo(() => {
-    if (mainCameraAspect == "wide") {
-      return "flex justify-center items-center";
-    } else if (mainCameraAspect == "tall") {
-      if (isDesktop) {
-        return "size-full flex flex-col justify-center items-center";
-      } else {
-        return "size-full";
-      }
-    } else {
-      return "";
-    }
-  }, [mainCameraAspect]);
-
-  const videoClassName = useMemo(() => {
-    if (mainCameraAspect == "wide") {
-      return "w-full aspect-wide";
-    } else if (mainCameraAspect == "tall") {
-      if (isDesktop) {
-        return "w-[50%] aspect-tall flex justify-center";
-      } else {
-        return "size-full";
-      }
-    } else {
-      return "w-full aspect-video";
-    }
-  }, [mainCameraAspect]);
+  }, [containerWidth, containerHeight, videoAspectRatio, containerAspectRatio]);
 
   return (
-    <div className="relative flex flex-col">
-      <div className={`aspect-video ${containerClassName}`}>
+    <div ref={containerRef} className="relative flex h-full w-full flex-col">
+      <div className="relative flex flex-grow items-center justify-center">
         {(isLoading || !reviewItem) && (
-          <ActivityIndicator className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
+          <ActivityIndicator className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2" />
         )}
-        <div className={videoClassName}>
+        <div
+          className="relative flex items-center justify-center"
+          style={videoDimensions}
+        >
           <HlsVideoPlayer
             videoRef={videoRef}
             currentSource={`${baseUrl}vod/${search.camera}/start/${search.start_time}/end/${endTime}/index.m3u8`}
@@ -538,36 +659,37 @@ function VideoTab({ search, config }: VideoTabProps) {
             fullscreen={false}
             supportsFullscreen={false}
             onPlaying={() => setIsLoading(false)}
+            setFullResolution={setVideoResolution}
           />
+          {!isLoading && reviewItem && (
+            <div
+              className={cn(
+                "absolute top-2 z-10 flex items-center",
+                isIOS ? "right-8" : "right-2",
+              )}
+            >
+              <Tooltip>
+                <TooltipTrigger>
+                  <Chip
+                    className="cursor-pointer rounded-md bg-gray-500 bg-gradient-to-br from-gray-400 to-gray-500"
+                    onClick={() => {
+                      if (reviewItem?.id) {
+                        const params = new URLSearchParams({
+                          id: reviewItem.id,
+                        }).toString();
+                        navigate(`/review?${params}`);
+                      }
+                    }}
+                  >
+                    <FaHistory className="size-4 text-white" />
+                  </Chip>
+                </TooltipTrigger>
+                <TooltipContent side="left">View in History</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
         </div>
       </div>
-      {!isLoading && reviewItem && (
-        <div
-          className={cn(
-            "absolute top-2 flex items-center",
-            isIOS ? "right-8" : "right-2",
-          )}
-        >
-          <Tooltip>
-            <TooltipTrigger>
-              <Chip
-                className="cursor-pointer rounded-md bg-gray-500 bg-gradient-to-br from-gray-400 to-gray-500"
-                onClick={() => {
-                  if (reviewItem?.id) {
-                    const params = new URLSearchParams({
-                      id: reviewItem.id,
-                    }).toString();
-                    navigate(`/review?${params}`);
-                  }
-                }}
-              >
-                <FaHistory className="size-4 text-white" />
-              </Chip>
-            </TooltipTrigger>
-            <TooltipContent side="left">View in History</TooltipContent>
-          </Tooltip>
-        </div>
-      )}
     </div>
   );
 }

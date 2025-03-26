@@ -1,7 +1,7 @@
 import { FaCircleCheck } from "react-icons/fa6";
 import { useCallback, useState } from "react";
 import axios from "axios";
-import { Button } from "../ui/button";
+import { Button, buttonVariants } from "../ui/button";
 import { isDesktop } from "react-device-detect";
 import { FaCompactDisc } from "react-icons/fa";
 import { HiTrash } from "react-icons/hi";
@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import useKeyboardListener from "@/hooks/use-keyboard-listener";
+import { Trans, useTranslation } from "react-i18next";
 
 type ReviewActionGroupProps = {
   selectedReviews: string[];
@@ -29,6 +30,7 @@ export default function ReviewActionGroup({
   onExport,
   pullLatestData,
 }: ReviewActionGroupProps) {
+  const { t } = useTranslation(["components/dialog"]);
   const onClearSelected = useCallback(() => {
     setSelectedReviews([]);
   }, [setSelectedReviews]);
@@ -68,19 +70,24 @@ export default function ReviewActionGroup({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Delete</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("recording.confirmDelete.title")}
+            </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            Are you sure you want to delete all recorded video associated with
-            the selected review items?
-            <br />
-            <br />
-            Hold the <em>Shift</em> key to bypass this dialog in the future.
+            <Trans ns="components/dialog">
+              recording.confirmDelete.desc.selected
+            </Trans>
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive" onClick={onDelete}>
-              Delete
+            <AlertDialogCancel>
+              {t("button.cancel", { ns: "common" })}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: "destructive" })}
+              onClick={onDelete}
+            >
+              {t("button.delete", { ns: "common" })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -94,13 +101,14 @@ export default function ReviewActionGroup({
             className="cursor-pointer p-2 text-primary hover:rounded-lg hover:bg-secondary"
             onClick={onClearSelected}
           >
-            Unselect
+            {t("button.unselect", { ns: "common" })}
           </div>
         </div>
         <div className="flex items-center gap-1 md:gap-2">
           {selectedReviews.length == 1 && (
             <Button
               className="flex items-center gap-2 p-2"
+              aria-label={t("recording.button.export")}
               size="sm"
               onClick={() => {
                 onExport(selectedReviews[0]);
@@ -108,26 +116,38 @@ export default function ReviewActionGroup({
               }}
             >
               <FaCompactDisc className="text-secondary-foreground" />
-              {isDesktop && <div className="text-primary">Export</div>}
+              {isDesktop && (
+                <div className="text-primary">
+                  {t("recording.button.export")}
+                </div>
+              )}
             </Button>
           )}
           <Button
             className="flex items-center gap-2 p-2"
+            aria-label={t("recording.button.markAsReviewed")}
             size="sm"
             onClick={onMarkAsReviewed}
           >
             <FaCircleCheck className="text-secondary-foreground" />
-            {isDesktop && <div className="text-primary">Mark as reviewed</div>}
+            {isDesktop && (
+              <div className="text-primary">
+                {t("recording.button.markAsReviewed")}
+              </div>
+            )}
           </Button>
           <Button
             className="flex items-center gap-2 p-2"
+            aria-label={t("button.delete", { ns: "common" })}
             size="sm"
             onClick={handleDelete}
           >
             <HiTrash className="text-secondary-foreground" />
             {isDesktop && (
               <div className="text-primary">
-                {bypassDialog ? "Delete Now" : "Delete"}
+                {bypassDialog
+                  ? t("recording.button.deleteNow")
+                  : t("button.delete", { ns: "common" })}
               </div>
             )}
           </Button>

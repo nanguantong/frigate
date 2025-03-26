@@ -9,33 +9,48 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { isMobile } from "react-device-detect";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 type SaveSearchDialogProps = {
+  existingNames: string[];
   isOpen: boolean;
   onClose: () => void;
   onSave: (name: string) => void;
 };
 
 export function SaveSearchDialog({
+  existingNames,
   isOpen,
   onClose,
   onSave,
 }: SaveSearchDialogProps) {
+  const { t } = useTranslation(["components/dialog"]);
+
   const [searchName, setSearchName] = useState("");
 
   const handleSave = () => {
     if (searchName.trim()) {
       onSave(searchName.trim());
       setSearchName("");
-      toast.success(`Search (${searchName.trim()}) has been saved.`, {
-        position: "top-center",
-      });
+      toast.success(
+        t("search.saveSearch.success", {
+          searchName: searchName.trim(),
+        }),
+        {
+          position: "top-center",
+        },
+      );
       onClose();
     }
   };
+
+  const overwrite = useMemo(
+    () => existingNames.includes(searchName),
+    [existingNames, searchName],
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -47,25 +62,36 @@ export function SaveSearchDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>Save Search</DialogTitle>
+          <DialogTitle>{t("search.saveSearch.label")}</DialogTitle>
           <DialogDescription className="sr-only">
-            Provide a name for this saved search.
+            {t("search.saveSearch.desc")}
           </DialogDescription>
         </DialogHeader>
         <Input
           value={searchName}
           className="text-md"
           onChange={(e) => setSearchName(e.target.value)}
-          placeholder="Enter a name for your search"
+          placeholder={t("search.saveSearch.placeholder")}
         />
+        {overwrite && (
+          <div className="ml-1 text-sm text-danger">
+            {t("search.saveSearch.overwrite", { searchName })}
+          </div>
+        )}
         <DialogFooter>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            aria-label={t("button.cancel", { ns: "common" })}
+            onClick={onClose}
+          >
+            {t("button.cancel", { ns: "common" })}
+          </Button>
           <Button
             onClick={handleSave}
             variant="select"
             className="mb-2 md:mb-0"
+            aria-label={t("search.saveSearch.button.save.label")}
           >
-            Save
+            {t("button.save", { ns: "common" })}
           </Button>
         </DialogFooter>
       </DialogContent>

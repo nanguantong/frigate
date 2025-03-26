@@ -1,8 +1,10 @@
 import { useTheme } from "@/context/theme-provider";
 import { FrigateConfig } from "@/types/frigateConfig";
+import { formatUnixTimestampToDateTime } from "@/utils/dateUtil";
 import { useCallback, useEffect, useMemo } from "react";
 import Chart from "react-apexcharts";
 import { isMobileOnly } from "react-device-detect";
+import { useTranslation } from "react-i18next";
 import { MdCircle } from "react-icons/md";
 import useSWR from "swr";
 
@@ -22,6 +24,7 @@ export function CameraLineGraph({
   updateTimes,
   data,
 }: CameraLineGraphProps) {
+  const { t } = useTranslation(["views/system"]);
   const { data: config } = useSWR<FrigateConfig>("config", {
     revalidateOnFocus: false,
   });
@@ -42,12 +45,14 @@ export function CameraLineGraph({
 
   const formatTime = useCallback(
     (val: unknown) => {
-      const date = new Date(updateTimes[Math.round(val as number)] * 1000);
-      return date.toLocaleTimeString([], {
-        hour12: config?.ui.time_format != "24hour",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+      return formatUnixTimestampToDateTime(
+        updateTimes[Math.round(val as number)],
+        {
+          timezone: config?.ui.timezone,
+          strftime_fmt:
+            config?.ui.time_format == "24hour" ? "%H:%M" : "%I:%M %p",
+        },
+      );
     },
     [config, updateTimes],
   );
@@ -123,7 +128,9 @@ export function CameraLineGraph({
                 className="size-2"
                 style={{ color: GRAPH_COLORS[labelIdx] }}
               />
-              <div className="text-xs text-muted-foreground">{label}</div>
+              <div className="text-xs text-muted-foreground">
+                {t("cameras.label." + label)}
+              </div>
               <div className="text-xs text-primary">
                 {lastValues[labelIdx]}
                 {unit}

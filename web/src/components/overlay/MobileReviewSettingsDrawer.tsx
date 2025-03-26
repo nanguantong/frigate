@@ -3,17 +3,23 @@ import { Drawer, DrawerContent, DrawerTrigger } from "../ui/drawer";
 import { Button } from "../ui/button";
 import { FaArrowDown, FaCalendarAlt, FaCog, FaFilter } from "react-icons/fa";
 import { TimeRange } from "@/types/timeline";
-import { ExportContent } from "./ExportDialog";
-import { ExportMode } from "@/types/filter";
+import { ExportContent, ExportPreviewDialog } from "./ExportDialog";
+import { ExportMode, GeneralFilter } from "@/types/filter";
 import ReviewActivityCalendar from "./ReviewActivityCalendar";
 import { SelectSeparator } from "../ui/select";
-import { ReviewFilter, ReviewSeverity, ReviewSummary } from "@/types/review";
+import {
+  RecordingsSummary,
+  ReviewFilter,
+  ReviewSeverity,
+  ReviewSummary,
+} from "@/types/review";
 import { getEndOfDayTimestamp } from "@/utils/dateUtil";
 import { GeneralFilterContent } from "../filter/ReviewFilterGroup";
 import { toast } from "sonner";
 import axios from "axios";
 import SaveExportOverlay from "./SaveExportOverlay";
 import { isIOS, isMobile } from "react-device-detect";
+import { useTranslation } from "react-i18next";
 
 type DrawerMode = "none" | "select" | "export" | "calendar" | "filter";
 
@@ -34,12 +40,15 @@ type MobileReviewSettingsDrawerProps = {
   currentTime: number;
   range?: TimeRange;
   mode: ExportMode;
+  showExportPreview: boolean;
   reviewSummary?: ReviewSummary;
+  recordingsSummary?: RecordingsSummary;
   allLabels: string[];
   allZones: string[];
   onUpdateFilter: (filter: ReviewFilter) => void;
   setRange: (range: TimeRange | undefined) => void;
   setMode: (mode: ExportMode) => void;
+  setShowExportPreview: (showPreview: boolean) => void;
 };
 export default function MobileReviewSettingsDrawer({
   features = DEFAULT_DRAWER_FEATURES,
@@ -50,13 +59,17 @@ export default function MobileReviewSettingsDrawer({
   currentTime,
   range,
   mode,
+  showExportPreview,
   reviewSummary,
+  recordingsSummary,
   allLabels,
   allZones,
   onUpdateFilter,
   setRange,
   setMode,
+  setShowExportPreview,
 }: MobileReviewSettingsDrawerProps) {
+  const { t } = useTranslation(["views/recording", "components/dialog"]);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("none");
 
   // exports
@@ -64,12 +77,14 @@ export default function MobileReviewSettingsDrawer({
   const [name, setName] = useState("");
   const onStartExport = useCallback(() => {
     if (!range) {
-      toast.error("No valid time range selected", { position: "top-center" });
+      toast.error(t("toast.error.noValidTimeSelected"), {
+        position: "top-center",
+      });
       return;
     }
 
     if (range.before < range.after) {
-      toast.error("End time must be after start time", {
+      toast.error(t("toast.error.endTimeMustAfterStartTime"), {
         position: "top-center",
       });
       return;
@@ -86,8 +101,10 @@ export default function MobileReviewSettingsDrawer({
       .then((response) => {
         if (response.status == 200) {
           toast.success(
-            "Successfully started export. View the file in the /exports folder.",
-            { position: "top-center" },
+            t("export.toast.success", { ns: "components/dialog" }),
+            {
+              position: "top-center",
+            },
           );
           setName("");
           setRange(undefined);
@@ -95,27 +112,30 @@ export default function MobileReviewSettingsDrawer({
         }
       })
       .catch((error) => {
-        if (error.response?.data?.message) {
-          toast.error(
-            `Failed to start export: ${error.response.data.message}`,
-            { position: "top-center" },
-          );
-        } else {
-          toast.error(`Failed to start export: ${error.message}`, {
+        const errorMessage =
+          error.response?.data?.message ||
+          error.response?.data?.detail ||
+          "Unknown error";
+        toast.error(
+          t("export.toast.error.failed", {
+            ns: "components/dialog",
+            errorMessage,
+          }),
+          {
             position: "top-center",
-          });
-        }
+          },
+        );
       });
-  }, [camera, name, range, setRange, setName, setMode]);
+  }, [camera, name, range, setRange, setName, setMode, t]);
 
   // filters
 
-  const [currentLabels, setCurrentLabels] = useState<string[] | undefined>(
-    filter?.labels,
-  );
-  const [currentZones, setCurrentZones] = useState<string[] | undefined>(
-    filter?.zones,
-  );
+  const [currentFilter, setCurrentFilter] = useState<GeneralFilter>({
+    labels: filter?.labels,
+    zones: filter?.zones,
+    showAll: filter?.showAll,
+    ...filter,
+  });
 
   if (!isMobile) {
     return;
@@ -128,37 +148,40 @@ export default function MobileReviewSettingsDrawer({
         {features.includes("export") && (
           <Button
             className="flex w-full items-center justify-center gap-2"
+            aria-label={t("export")}
             onClick={() => {
               setDrawerMode("export");
               setMode("select");
             }}
           >
             <FaArrowDown className="rounded-md bg-secondary-foreground fill-secondary p-1" />
-            Export
+            {t("export")}
           </Button>
         )}
         {features.includes("calendar") && (
           <Button
             className="flex w-full items-center justify-center gap-2"
+            aria-label={t("calendar")}
             variant={filter?.after ? "select" : "default"}
             onClick={() => setDrawerMode("calendar")}
           >
             <FaCalendarAlt
               className={`${filter?.after ? "text-selected-foreground" : "text-secondary-foreground"}`}
             />
-            Calendar
+            {t("calendar")}
           </Button>
         )}
         {features.includes("filter") && (
           <Button
             className="flex w-full items-center justify-center gap-2"
+            aria-label={t("filter")}
             variant={filter?.labels || filter?.zones ? "select" : "default"}
             onClick={() => setDrawerMode("filter")}
           >
             <FaFilter
               className={`${filter?.labels || filter?.zones ? "text-selected-foreground" : "text-secondary-foreground"}`}
             />
-            Filter
+            {t("filter")}
           </Button>
         )}
       </div>
@@ -195,15 +218,16 @@ export default function MobileReviewSettingsDrawer({
             className="absolute left-0 text-selected"
             onClick={() => setDrawerMode("select")}
           >
-            Back
+            {t("button.back", { ns: "common" })}
           </div>
           <div className="absolute left-1/2 -translate-x-1/2 text-muted-foreground">
-            Calendar
+            {t("calendar")}
           </div>
         </div>
         <div className="flex w-full flex-row justify-center">
           <ReviewActivityCalendar
             reviewSummary={reviewSummary}
+            recordingsSummary={recordingsSummary}
             selectedDay={
               filter?.after == undefined
                 ? undefined
@@ -222,6 +246,7 @@ export default function MobileReviewSettingsDrawer({
         <SelectSeparator />
         <div className="flex items-center justify-center p-2">
           <Button
+            aria-label={t("button.reset", { ns: "common" })}
             onClick={() => {
               onUpdateFilter({
                 ...filter,
@@ -230,7 +255,7 @@ export default function MobileReviewSettingsDrawer({
               });
             }}
           >
-            Reset
+            {t("button.reset", { ns: "common" })}
           </Button>
         </div>
       </div>
@@ -243,32 +268,30 @@ export default function MobileReviewSettingsDrawer({
             className="absolute left-0 text-selected"
             onClick={() => setDrawerMode("select")}
           >
-            Back
+            {t("button.back", { ns: "common" })}
           </div>
           <div className="absolute left-1/2 -translate-x-1/2 text-muted-foreground">
-            Filter
+            {t("filter")}
           </div>
         </div>
         <GeneralFilterContent
           allLabels={allLabels}
           selectedLabels={filter?.labels}
-          currentLabels={currentLabels}
           currentSeverity={currentSeverity}
-          showAll={filter?.showAll == true}
           allZones={allZones}
+          filter={currentFilter}
           selectedZones={filter?.zones}
-          currentZones={currentZones}
-          setCurrentZones={setCurrentZones}
-          updateZoneFilter={(newZones) =>
-            onUpdateFilter({ ...filter, zones: newZones })
-          }
-          setShowAll={(showAll) => {
-            onUpdateFilter({ ...filter, showAll });
+          onUpdateFilter={setCurrentFilter}
+          onApply={() => {
+            if (currentFilter !== filter) {
+              onUpdateFilter(currentFilter);
+            }
           }}
-          setCurrentLabels={setCurrentLabels}
-          updateLabelFilter={(newLabels) =>
-            onUpdateFilter({ ...filter, labels: newLabels })
-          }
+          onReset={() => {
+            const resetFilter: GeneralFilter = {};
+            setCurrentFilter(resetFilter);
+            onUpdateFilter(resetFilter);
+          }}
           onClose={() => setDrawerMode("select")}
         />
       </div>
@@ -282,6 +305,13 @@ export default function MobileReviewSettingsDrawer({
         show={mode == "timeline"}
         onSave={() => onStartExport()}
         onCancel={() => setMode("none")}
+        onPreview={() => setShowExportPreview(true)}
+      />
+      <ExportPreviewDialog
+        camera={camera}
+        range={range}
+        showPreview={showExportPreview}
+        setShowPreview={setShowExportPreview}
       />
       <Drawer
         modal={!(isIOS && drawerMode == "export")}
@@ -295,6 +325,7 @@ export default function MobileReviewSettingsDrawer({
         <DrawerTrigger asChild>
           <Button
             className="rounded-lg capitalize"
+            aria-label={t("filters")}
             variant={
               filter?.labels || filter?.after || filter?.zones
                 ? "select"

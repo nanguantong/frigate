@@ -10,6 +10,8 @@ import ActivityIndicator from "../indicators/activity-indicator";
 import { GpuInfo, Nvinfo, Vainfo } from "@/types/stats";
 import { Button } from "../ui/button";
 import copy from "copy-to-clipboard";
+import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 type GPUInfoDialogProps = {
   showGpuInfo: boolean;
@@ -21,6 +23,8 @@ export default function GPUInfoDialog({
   gpuType,
   setShowGpuInfo,
 }: GPUInfoDialogProps) {
+  const { t } = useTranslation(["views/system"]);
+
   const { data: vainfo } = useSWR<Vainfo>(
     showGpuInfo && gpuType == "vainfo" ? "vainfo" : null,
   );
@@ -30,12 +34,11 @@ export default function GPUInfoDialog({
 
   const onCopyInfo = async () => {
     copy(
-      JSON.stringify(gpuType == "vainfo" ? vainfo : nvinfo).replace(
-        /[\\\s]+/gi,
-        "",
-      ),
+      JSON.stringify(gpuType == "vainfo" ? vainfo : nvinfo)
+        .replace(/\\t/g, "\t")
+        .replace(/\\n/g, "\n"),
     );
-    setShowGpuInfo(false);
+    toast.success(t("general.hardwareInfo.gpuInfo.toast.success"));
   };
 
   if (gpuType == "vainfo") {
@@ -43,13 +46,23 @@ export default function GPUInfoDialog({
       <Dialog open={showGpuInfo} onOpenChange={setShowGpuInfo}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Vainfo Output</DialogTitle>
+            <DialogTitle>
+              {t("general.hardwareInfo.gpuInfo.vainfoOutput.title")}
+            </DialogTitle>
           </DialogHeader>
           {vainfo ? (
             <div className="scrollbar-container mb-2 max-h-96 overflow-y-scroll whitespace-pre-line">
-              <div>Return Code: {vainfo.return_code}</div>
+              <div>
+                {t("general.hardwareInfo.gpuInfo.vainfoOutput.returnCode", {
+                  code: vainfo.return_code,
+                })}
+              </div>
               <br />
-              <div>Process {vainfo.return_code == 0 ? "Output" : "Error"}:</div>
+              <div>
+                {vainfo.return_code == 0
+                  ? t("general.hardwareInfo.gpuInfo.vainfoOutput.processOutput")
+                  : t("general.hardwareInfo.gpuInfo.vainfoOutput.processError")}
+              </div>
               <br />
               <div>
                 {vainfo.return_code == 0 ? vainfo.stdout : vainfo.stderr}
@@ -59,9 +72,18 @@ export default function GPUInfoDialog({
             <ActivityIndicator />
           )}
           <DialogFooter>
-            <Button onClick={() => setShowGpuInfo(false)}>Close</Button>
-            <Button variant="select" onClick={() => onCopyInfo()}>
-              Copy
+            <Button
+              aria-label={t("general.hardwareInfo.gpuInfo.closeInfo.label")}
+              onClick={() => setShowGpuInfo(false)}
+            >
+              {t("button.close", { ns: "common" })}
+            </Button>
+            <Button
+              aria-label={t("general.hardwareInfo.gpuInfo.copyInfo.label")}
+              variant="select"
+              onClick={() => onCopyInfo()}
+            >
+              {t("button.copy", { ns: "common" })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -72,25 +94,52 @@ export default function GPUInfoDialog({
       <Dialog open={showGpuInfo} onOpenChange={setShowGpuInfo}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nvidia SMI Output</DialogTitle>
+            <DialogTitle>
+              {t("general.hardwareInfo.gpuInfo.nvidiaSMIOutput.title")}
+            </DialogTitle>
           </DialogHeader>
           {nvinfo ? (
             <div className="scrollbar-container mb-2 max-h-96 overflow-y-scroll whitespace-pre-line">
-              <div>Name: {nvinfo["0"].name}</div>
+              <div>
+                {t("general.hardwareInfo.gpuInfo.nvidiaSMIOutput.name", {
+                  name: nvinfo["0"].name,
+                })}
+              </div>
               <br />
-              <div>Driver: {nvinfo["0"].driver}</div>
+              <div>
+                {t("general.hardwareInfo.gpuInfo.nvidiaSMIOutput.name", {
+                  name: nvinfo["0"].driver,
+                })}
+              </div>
               <br />
-              <div>Cuda Compute Capability: {nvinfo["0"].cuda_compute}</div>
+              <div>
+                {t("general.hardwareInfo.gpuInfo.nvidiaSMIOutput.name", {
+                  name: nvinfo["0"].cuda_compute,
+                })}
+              </div>
               <br />
-              <div>VBios Info: {nvinfo["0"].vbios}</div>
+              <div>
+                {t("general.hardwareInfo.gpuInfo.nvidiaSMIOutput.name", {
+                  name: nvinfo["0"].vbios,
+                })}
+              </div>
             </div>
           ) : (
             <ActivityIndicator />
           )}
           <DialogFooter>
-            <Button onClick={() => setShowGpuInfo(false)}>Close</Button>
-            <Button variant="select" onClick={() => onCopyInfo()}>
-              Copy
+            <Button
+              aria-label={t("general.hardwareInfo.gpuInfo.closeInfo.label")}
+              onClick={() => setShowGpuInfo(false)}
+            >
+              {t("button.close", { ns: "common" })}
+            </Button>
+            <Button
+              aria-label={t("general.hardwareInfo.gpuInfo.copyInfo.label")}
+              variant="select"
+              onClick={() => onCopyInfo()}
+            >
+              {t("button.copy", { ns: "common" })}
             </Button>
           </DialogFooter>
         </DialogContent>

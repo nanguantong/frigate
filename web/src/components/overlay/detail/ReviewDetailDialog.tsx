@@ -13,7 +13,7 @@ import { getIconForLabel } from "@/utils/iconUtil";
 import { useApiHost } from "@/api";
 import { ReviewDetailPaneType, ReviewSegment } from "@/types/review";
 import { Event } from "@/types/event";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { FrigatePlusDialog } from "../dialog/FrigatePlusDialog";
 import ObjectLifecycle from "./ObjectLifecycle";
@@ -38,6 +38,11 @@ import {
   MobilePageTitle,
 } from "@/components/mobile/MobilePage";
 import { useOverlayState } from "@/hooks/use-overlay-state";
+import { DownloadVideoButton } from "@/components/button/DownloadVideoButton";
+import { TooltipPortal } from "@radix-ui/react-tooltip";
+import { LuSearch } from "react-icons/lu";
+import useKeyboardListener from "@/hooks/use-keyboard-listener";
+import { Trans, useTranslation } from "react-i18next";
 
 type ReviewDetailDialogProps = {
   review?: ReviewSegment;
@@ -47,9 +52,12 @@ export default function ReviewDetailDialog({
   review,
   setReview,
 }: ReviewDetailDialogProps) {
+  const { t } = useTranslation(["views/explore"]);
   const { data: config } = useSWR<FrigateConfig>("config", {
     revalidateOnFocus: false,
   });
+
+  const navigate = useNavigate();
 
   // upload
 
@@ -69,11 +77,28 @@ export default function ReviewDetailDialog({
     return events.length != review?.data.detections.length;
   }, [review, events]);
 
+  const missingObjects = useMemo(() => {
+    if (!review || !events) {
+      return [];
+    }
+
+    const detectedIds = review.data.detections;
+    const missing = Array.from(
+      new Set(
+        events
+          .filter((event) => !detectedIds.includes(event.id))
+          .map((event) => event.label),
+      ),
+    );
+
+    return missing;
+  }, [review, events]);
+
   const formattedDate = useFormattedTimestamp(
     review?.start_time ?? 0,
     config?.ui.time_format == "24hour"
-      ? "%b %-d %Y, %H:%M"
-      : "%b %-d %Y, %I:%M %p",
+      ? t("time.formattedTimestampWithYear.24hour", { ns: "common" })
+      : t("time.formattedTimestampWithYear.12hour", { ns: "common" }),
     config?.ui.timezone,
   );
 
@@ -89,11 +114,35 @@ export default function ReviewDetailDialog({
     review != undefined,
   );
 
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      setIsOpen(open);
+      if (!open) {
+        // short timeout to allow the mobile page animation
+        // to complete before updating the state
+        setTimeout(() => {
+          setReview(undefined);
+          setSelectedEvent(undefined);
+          setPane("overview");
+        }, 300);
+      }
+    },
+    [setReview, setIsOpen],
+  );
+
   useEffect(() => {
     setIsOpen(review != undefined);
     // we know that these deps are correct
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [review]);
+
+  // keyboard listener
+
+  useKeyboardListener(["Esc"], (key, modifiers) => {
+    if (key == "Esc" && modifiers.down && !modifiers.repeat) {
+      setIsOpen(false);
+    }
+  });
 
   const Overlay = isDesktop ? Sheet : MobilePage;
   const Content = isDesktop ? SheetContent : MobilePageContent;
@@ -107,16 +156,7 @@ export default function ReviewDetailDialog({
 
   return (
     <>
-      <Overlay
-        open={isOpen ?? false}
-        onOpenChange={(open) => {
-          if (!open) {
-            setReview(undefined);
-            setSelectedEvent(undefined);
-            setPane("overview");
-          }
-        }}
-      >
+      <Overlay open={isOpen ?? false} onOpenChange={handleOpenChange}>
         <FrigatePlusDialog
           upload={upload}
           onClose={() => setUpload(undefined)}
@@ -138,19 +178,22 @@ export default function ReviewDetailDialog({
         >
           <span tabIndex={0} className="sr-only" />
           {pane == "overview" && (
-            <Header className="justify-center" onClose={() => setIsOpen(false)}>
-              <Title>Review Item Details</Title>
-              <Description className="sr-only">Review item details</Description>
+            <Header className="justify-center">
+              <Title>{t("details.item.title")}</Title>
+              <Description className="sr-only">
+                {t("details.item.desc")}
+              </Description>
               <div
                 className={cn(
-                  "absolute",
+                  "absolute flex gap-2 lg:flex-col",
                   isDesktop && "right-1 top-8",
                   isMobile && "right-0 top-3",
                 )}
               >
                 <Tooltip>
-                  <TooltipTrigger>
+                  <TooltipTrigger asChild>
                     <Button
+                      aria-label={t("details.item.button.share")}
                       size="sm"
                       onClick={() =>
                         shareOrCopy(`${baseUrl}review?id=${review.id}`)
@@ -159,7 +202,25 @@ export default function ReviewDetailDialog({
                       <FaShareAlt className="size-4 text-secondary-foreground" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Share this review item</TooltipContent>
+                  <TooltipPortal>
+                    <TooltipContent>
+                      {t("details.item.button.share")}
+                    </TooltipContent>
+                  </TooltipPortal>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <DownloadVideoButton
+                      source={`${baseUrl}api/${review.camera}/start/${review.start_time}/end/${review.end_time || Date.now() / 1000}/clip.mp4`}
+                      camera={review.camera}
+                      startTime={review.start_time}
+                    />
+                  </TooltipTrigger>
+                  <TooltipPortal>
+                    <TooltipContent>
+                      {t("button.download", { ns: "common" })}
+                    </TooltipContent>
+                  </TooltipPortal>
                 </Tooltip>
               </div>
             </Header>
@@ -169,19 +230,25 @@ export default function ReviewDetailDialog({
               <div className="flex w-full flex-row">
                 <div className="flex w-full flex-col gap-3">
                   <div className="flex flex-col gap-1.5">
-                    <div className="text-sm text-primary/40">Camera</div>
+                    <div className="text-sm text-primary/40">
+                      {t("details.camera")}
+                    </div>
                     <div className="text-sm capitalize">
                       {review.camera.replaceAll("_", " ")}
                     </div>
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <div className="text-sm text-primary/40">Timestamp</div>
+                    <div className="text-sm text-primary/40">
+                      {t("details.timestamp")}
+                    </div>
                     <div className="text-sm">{formattedDate}</div>
                   </div>
                 </div>
                 <div className="flex w-full flex-col items-center gap-2">
-                  <div className="flex w-full flex-col gap-1.5">
-                    <div className="text-sm text-primary/40">Objects</div>
+                  <div className="flex w-full flex-col gap-1.5 lg:pr-8">
+                    <div className="text-sm text-primary/40">
+                      {t("details.objects")}
+                    </div>
                     <div className="scrollbar-container flex max-h-32 flex-col items-start gap-2 overflow-y-auto text-sm capitalize">
                       {events?.map((event) => {
                         return (
@@ -195,6 +262,23 @@ export default function ReviewDetailDialog({
                             )}
                             {event.sub_label ?? event.label} (
                             {Math.round(event.data.top_score * 100)}%)
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <div
+                                  className="cursor-pointer"
+                                  onClick={() => {
+                                    navigate(`/explore?event_id=${event.id}`);
+                                  }}
+                                >
+                                  <LuSearch className="size-4 text-muted-foreground" />
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipPortal>
+                                <TooltipContent>
+                                  {t("details.item.button.viewInExplore")}
+                                </TooltipContent>
+                              </TooltipPortal>
+                            </Tooltip>
                           </div>
                         );
                       })}
@@ -202,7 +286,9 @@ export default function ReviewDetailDialog({
                   </div>
                   {review.data.zones.length > 0 && (
                     <div className="scrollbar-container flex max-h-32 w-full flex-col gap-1.5">
-                      <div className="text-sm text-primary/40">Zones</div>
+                      <div className="text-sm text-primary/40">
+                        {t("details.zones")}
+                      </div>
                       <div className="flex flex-col items-start gap-2 text-sm capitalize">
                         {review.data.zones.map((zone) => {
                           return (
@@ -221,8 +307,30 @@ export default function ReviewDetailDialog({
               </div>
               {hasMismatch && (
                 <div className="p-4 text-center text-sm">
-                  Some objects that were detected are not included in this list
-                  because the object does not have a snapshot
+                  {(() => {
+                    const detectedCount = Math.abs(
+                      (events?.length ?? 0) -
+                        (review?.data.detections.length ?? 0),
+                    );
+
+                    return t("details.item.tips.mismatch", {
+                      count: detectedCount,
+                    });
+                  })()}
+                  {missingObjects.length > 0 && (
+                    <div className="mt-2">
+                      <Trans
+                        ns="views/explore"
+                        values={{
+                          objects: missingObjects
+                            .map((x) => t(x, { ns: "objects" }))
+                            .join(", "),
+                        }}
+                      >
+                        details.item.tips.hasMissingObjects
+                      </Trans>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="relative flex size-full flex-col gap-2">
@@ -263,6 +371,8 @@ function EventItem({
   setSelectedEvent,
   setUpload,
 }: EventItemProps) {
+  const { t } = useTranslation(["views/explore"]);
+
   const { data: config } = useSWR<FrigateConfig>("config", {
     revalidateOnFocus: false,
   });
@@ -309,7 +419,7 @@ function EventItem({
           src={
             event.has_snapshot
               ? `${apiHost}api/events/${event.id}/snapshot.jpg`
-              : `${apiHost}api/events/${event.id}/thumbnail.jpg`
+              : `${apiHost}api/events/${event.id}/thumbnail.webp`
           }
         />
         {hovered && (
@@ -324,7 +434,7 @@ function EventItem({
                     href={
                       event.has_snapshot
                         ? `${apiHost}api/events/${event.id}/snapshot.jpg`
-                        : `${apiHost}api/events/${event.id}/thumbnail.jpg`
+                        : `${apiHost}api/events/${event.id}/thumbnail.webp`
                     }
                   >
                     <Chip className="cursor-pointer rounded-md bg-gray-500 bg-gradient-to-br from-gray-400 to-gray-500">
@@ -332,11 +442,14 @@ function EventItem({
                     </Chip>
                   </a>
                 </TooltipTrigger>
-                <TooltipContent>Download</TooltipContent>
+                <TooltipContent>
+                  {t("button.download", { ns: "common" })}
+                </TooltipContent>
               </Tooltip>
 
               {event.has_snapshot &&
                 event.plus_id == undefined &&
+                event.data.type == "object" &&
                 config?.plus.enabled && (
                   <Tooltip>
                     <TooltipTrigger>
@@ -349,7 +462,9 @@ function EventItem({
                         <FrigatePlusIcon className="size-4 text-white" />
                       </Chip>
                     </TooltipTrigger>
-                    <TooltipContent>Submit to Frigate+</TooltipContent>
+                    <TooltipContent>
+                      {t("itemMenu.submitToPlus.label")}
+                    </TooltipContent>
                   </Tooltip>
                 )}
 
@@ -366,7 +481,9 @@ function EventItem({
                       <FaArrowsRotate className="size-4 text-white" />
                     </Chip>
                   </TooltipTrigger>
-                  <TooltipContent>View Object Lifecycle</TooltipContent>
+                  <TooltipContent>
+                    {t("itemMenu.viewObjectLifecycle.label")}
+                  </TooltipContent>
                 </Tooltip>
               )}
 
@@ -384,7 +501,9 @@ function EventItem({
                       <FaImages className="size-4 text-white" />
                     </Chip>
                   </TooltipTrigger>
-                  <TooltipContent>Find Similar</TooltipContent>
+                  <TooltipContent>
+                    {t("itemMenu.findSimilar.label")}
+                  </TooltipContent>
                 </Tooltip>
               )}
             </div>

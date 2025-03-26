@@ -74,6 +74,8 @@ class ProcessClip:
         self.frame_queue = mp.Queue()
         self.detected_objects_queue = mp.Queue()
         self.camera_state = CameraState(self.camera_name, config, self.frame_manager)
+        self.stop_event = mp.Event()
+        self.frame_index = 0
 
     def load_frames(self):
         fps = EventsPerSecond()
@@ -88,13 +90,15 @@ class ProcessClip:
         )
         capture_frames(
             ffmpeg_process,
-            self.camera_name,
+            self.camera_config,
+            self.frame_index,
             self.camera_config.frame_shape_yuv,
             self.frame_manager,
             self.frame_queue,
             fps,
             skipped_fps,
             current_frame,
+            self.stop_event
         )
         ffmpeg_process.wait()
         ffmpeg_process.communicate()
@@ -116,7 +120,6 @@ class ProcessClip:
 
         detection_enabled = mp.Value("d", 1)
         motion_enabled = mp.Value("d", True)
-        stop_event = mp.Event()
 
         process_frames(
             self.camera_name,
@@ -134,7 +137,7 @@ class ProcessClip:
             object_filters,
             detection_enabled,
             motion_enabled,
-            stop_event,
+            self.stop_event,
             exit_on_empty=True,
         )
 

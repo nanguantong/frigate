@@ -66,13 +66,14 @@ class LocalObjectDetector(ObjectDetector):
         raw_detections = self.detect_raw(tensor_input)
 
         for d in raw_detections:
-            if int(d[0]) < 0 or int(d[0]) >= len(self.labels):
+            lable_index = int(d[0])
+            if lable_index < 0 or lable_index >= len(self.labels):
                 logger.warning(f"Raw Detect returned invalid label: {d}")
                 continue
             if d[1] < threshold:
                 break
             detections.append(
-                (self.labels[int(d[0])], float(d[1]), (d[2], d[3], d[4], d[5]))
+                (self.labels[lable_index], float(d[1]), (d[2], d[3], d[4], d[5]))
             )
         self.fps.update()
         return detections
@@ -231,10 +232,14 @@ class RemoteObjectDetector:
             return detections
 
         for d in self.out_np_shm:
+            lable_index = int(d[0])
+            if lable_index < 0 or lable_index >= len(self.labels):
+                logger.warning(f"Raw Detect returned invalid label: {d}")
+                continue
             if d[1] < threshold:
                 break
             detections.append(
-                (self.labels[int(d[0])], float(d[1]), (d[2], d[3], d[4], d[5]))
+                (self.labels[lable_index], float(d[1]), (d[2], d[3], d[4], d[5]))
             )
         self.fps.update()
         return detections

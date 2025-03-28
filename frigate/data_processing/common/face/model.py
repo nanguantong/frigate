@@ -9,7 +9,7 @@ import numpy as np
 from scipy import stats
 
 from frigate.config import FrigateConfig
-from frigate.const import MODEL_CACHE_DIR
+from frigate.const import FACE_DIR, MODEL_CACHE_DIR
 from frigate.embeddings.onnx.face_embedding import ArcfaceEmbedding
 
 logger = logging.getLogger(__name__)
@@ -131,7 +131,7 @@ class LBPHRecognizer(FaceRecognizer):
         self.recognizer: cv2.face.LBPHFaceRecognizer | None = None
 
     def clear(self) -> None:
-        self.face_recognizer = None
+        self.recognizer = None
         self.label_map = {}
 
     def build(self):
@@ -143,7 +143,7 @@ class LBPHRecognizer(FaceRecognizer):
         faces = []
         idx = 0
 
-        dir = "/media/frigate/clips/faces"
+        dir = FACE_DIR
         for name in os.listdir(dir):
             if name == "train":
                 continue
@@ -220,7 +220,7 @@ class ArcFaceRecognizer(FaceRecognizer):
             face_embeddings_map: dict[str, list[np.ndarray]] = {}
             idx = 0
 
-            dir = "/media/frigate/clips/faces"
+            dir = FACE_DIR
             for name in os.listdir(dir):
                 if name == "train":
                     continue

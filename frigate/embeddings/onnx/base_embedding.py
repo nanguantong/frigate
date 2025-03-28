@@ -32,25 +32,21 @@ class BaseEmbedding(ABC):
         self.downloader: ModelDownloader = None
 
     def _download_model(self, path: str):
+        state = ModelStatusTypesEnum.downloaded
+
         try:
             file_name = os.path.basename(path)
 
             if file_name in self.download_urls:
                 ModelDownloader.download_from_url(self.download_urls[file_name], path)
-
-            self.downloader.requestor.send_data(
-                UPDATE_MODEL_STATE,
-                {
-                    "model": f"{self.model_name}-{file_name}",
-                    "state": ModelStatusTypesEnum.downloaded,
-                },
-            )
         except Exception:
-            self.downloader.requestor.send_data(
+            state = ModelStatusTypesEnum.error
+
+        self.downloader.requestor.send_data(
                 UPDATE_MODEL_STATE,
                 {
                     "model": f"{self.model_name}-{file_name}",
-                    "state": ModelStatusTypesEnum.error,
+                    "state": state,
                 },
             )
 

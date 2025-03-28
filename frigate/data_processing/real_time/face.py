@@ -101,6 +101,9 @@ class FaceRealTimeProcessor(RealTimeProcessorApi):
             input_size=(320, 320),
             score_threshold=0.5,
             nms_threshold=0.3,
+            # top_k=5000
+            # backend_id=0
+            # target_id=0
         )
 
     def __detect_face(

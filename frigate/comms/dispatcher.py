@@ -289,7 +289,7 @@ class Dispatcher:
         camera_settings = self.config.cameras[camera_name]
 
         if payload == "ON":
-            if not self.config.cameras[camera_name].enabled_in_config:
+            if not camera_settings.enabled_in_config:
                 logger.error(
                     "Camera must be enabled in the config to be turned on via MQTT."
                 )
@@ -419,7 +419,7 @@ class Dispatcher:
         audio_settings = self.config.cameras[camera_name].audio
 
         if payload == "ON":
-            if not self.config.cameras[camera_name].audio.enabled_in_config:
+            if not audio_settings.enabled_in_config:
                 logger.error(
                     "Audio detection must be enabled in the config to be turned on via MQTT."
                 )
@@ -441,7 +441,7 @@ class Dispatcher:
         record_settings = self.config.cameras[camera_name].record
 
         if payload == "ON":
-            if not self.config.cameras[camera_name].record.enabled_in_config:
+            if not record_settings.enabled_in_config:
                 logger.error(
                     "Recordings must be enabled in the config to be turned on via MQTT."
                 )
@@ -534,7 +534,7 @@ class Dispatcher:
         notification_settings = self.config.cameras[camera_name].notifications
 
         if payload == "ON":
-            if not self.config.cameras[camera_name].notifications.enabled_in_config:
+            if not notification_settings.enabled_in_config:
                 logger.error(
                     "Notifications must be enabled in the config to be turned on via MQTT."
                 )
@@ -602,7 +602,7 @@ class Dispatcher:
         review_settings = self.config.cameras[camera_name].review
 
         if payload == "ON":
-            if not self.config.cameras[camera_name].review.alerts.enabled_in_config:
+            if not review_settings.alerts.enabled_in_config:
                 logger.error(
                     "Alerts must be enabled in the config to be turned on via MQTT."
                 )
@@ -624,7 +624,7 @@ class Dispatcher:
         review_settings = self.config.cameras[camera_name].review
 
         if payload == "ON":
-            if not self.config.cameras[camera_name].review.detections.enabled_in_config:
+            if not review_settings.detections.enabled_in_config:
                 logger.error(
                     "Detections must be enabled in the config to be turned on via MQTT."
                 )

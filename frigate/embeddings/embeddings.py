@@ -204,8 +204,8 @@ class Embeddings:
             )
 
         duration = datetime.datetime.now().timestamp() - start
-        self.metrics.text_embeddings_sps.value = (
-            self.metrics.text_embeddings_sps.value * 9 + (duration / len(ids))
+        self.metrics.image_embeddings_fps.value = (
+            self.metrics.image_embeddings_fps.value * 9 + (duration / len(ids))
         ) / 10
 
         return embeddings

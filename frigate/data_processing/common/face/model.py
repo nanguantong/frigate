@@ -167,7 +167,7 @@ class FaceNetRecognizer(FaceRecognizer):
             face_embeddings_map: dict[str, list[np.ndarray]] = {}
             idx = 0
 
-            dir = "/media/frigate/clips/faces"
+            dir = FACE_DIR
             for name in os.listdir(dir):
                 if name == "train":
                     continue

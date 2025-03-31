@@ -4,7 +4,7 @@ set -euxo pipefail
 
 # sed -i s/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g /etc/apt/sources.list && \
 # sed -i 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn/|g' /etc/apt/sources.list && \
-# sed -i '/stretch-updates/d' /etc/apt/sources.list && \
+# sed -i '/stretch-updates/d' /etc/apt/sources.list
 
 NGINX_VERSION="1.27.4"
 VOD_MODULE_VERSION="1.31"
